@@ -11,6 +11,11 @@ import {
   Loader2,
   X,
   FileQuestion,
+  Clock,
+  Archive,
+  PhoneCall,
+  Mail,
+  UserCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +42,7 @@ export default function TicketsPage() {
   const [filterStatut, setFilterStatut] = useState<string>("tous");
   const [filterPriorite, setFilterPriorite] = useState<string>("tous");
 
-  // Modal Nouveau Ticket
+  // Modal Nouveau Ticket (Enregistrement employé ou par IT au nom d'un employé)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formDemandeurId, setFormDemandeurId] = useState("");
@@ -47,10 +52,12 @@ export default function TicketsPage() {
   const [formCanal, setFormCanal] = useState<CanalTicket>("application");
   const [formEquipementId, setFormEquipementId] = useState("");
 
-  // Modal Résolution / Intervention
+  // Modal Traitement Ticket & Intervention unique
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const [newStatut, setNewStatut] = useState<StatutTicket>("en_cours");
+  const [intDebut, setIntDebut] = useState("");
+  const [intFin, setIntFin] = useState("");
   const [actionIntervention, setActionIntervention] = useState("");
   const [resultatIntervention, setResultatIntervention] = useState("");
 
@@ -119,7 +126,7 @@ export default function TicketsPage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success("Demande d'assistance créée avec succès !");
+        toast.success("Demande d'assistance enregistrée avec succès !");
         setIsModalOpen(false);
         setFormDescription("");
         setFormEquipementId("");
@@ -134,20 +141,81 @@ export default function TicketsPage() {
     }
   };
 
+  const openTicketModal = async (ticket: Ticket) => {
+    setActiveTicket(ticket);
+    setNewStatut(ticket.statut);
+
+    // Initialisation des dates d'intervention (actuelles ou existantes)
+    const now = new Date();
+    const nowLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    
+    // Charger les détails du ticket pour récupérer l'intervention rattachée
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`);
+      const json = await res.json();
+      if (res.ok && json.success && json.data.intervention_actions) {
+        const d = json.data;
+        setActionIntervention(d.intervention_actions || "");
+        setResultatIntervention(d.intervention_resultat || "");
+        setIntDebut(d.intervention_debut ? d.intervention_debut.slice(0, 16).replace(" ", "T") : nowLocal);
+        setIntFin(d.intervention_fin ? d.intervention_fin.slice(0, 16).replace(" ", "T") : nowLocal);
+      } else {
+        setActionIntervention("");
+        setResultatIntervention("");
+        setIntDebut(nowLocal);
+        setIntFin(nowLocal);
+      }
+    } catch {
+      setActionIntervention("");
+      setResultatIntervention("");
+      setIntDebut(nowLocal);
+      setIntFin(nowLocal);
+    }
+  };
+
+  // Calcul de la durée estimée
+  const computeDuree = () => {
+    if (!intDebut || !intFin) return null;
+    const diffMs = new Date(intFin).getTime() - new Date(intDebut).getTime();
+    if (diffMs < 0) return "Date de fin antérieure au début !";
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m} minute${m > 1 ? "s" : ""}`;
+    return `${h} h ${m > 0 ? `${m} min` : ""}`;
+  };
+
   const handleUpdateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTicket) return;
 
+    if (actionIntervention.trim()) {
+      if (intDebut && intFin && new Date(intFin).getTime() < new Date(intDebut).getTime()) {
+        toast.error("La date et heure de fin ne peuvent pas être antérieures au début.");
+        return;
+      }
+    }
+
     setIsResolving(true);
     try {
-      const payload: { statut: StatutTicket; intervention?: { actions: string; resultat: string } } = {
+      const payload: {
+        statut: StatutTicket;
+        intervention?: {
+          debut: string;
+          fin: string;
+          actions: string;
+          resultat: string;
+        };
+      } = {
         statut: newStatut,
       };
 
       if (actionIntervention.trim()) {
         payload.intervention = {
-          actions: actionIntervention,
-          resultat: resultatIntervention || "Traité par l'administrateur IT",
+          debut: intDebut ? intDebut.replace("T", " ") + ":00" : new Date().toISOString().slice(0, 19).replace("T", " "),
+          fin: intFin ? intFin.replace("T", " ") + ":00" : new Date().toISOString().slice(0, 19).replace("T", " "),
+          actions: actionIntervention.trim(),
+          resultat: resultatIntervention.trim() || "Traité par le service informatique",
         };
       }
 
@@ -159,7 +227,13 @@ export default function TicketsPage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success("Ticket et rapport d'intervention mis à jour !");
+        toast.success(
+          newStatut === "cloture"
+            ? "Ticket clôturé définitivement."
+            : newStatut === "resolu"
+            ? "Ticket marqué comme résolu."
+            : "Ticket et intervention actualisés !"
+        );
         setActiveTicket(null);
         setActionIntervention("");
         setResultatIntervention("");
@@ -177,40 +251,50 @@ export default function TicketsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Tickets d’assistance"
-        description="Signalements des employés et suivi des interventions techniques."
+        title="Tickets & Demandes d'assistance"
+        description="Gestion des signalements, prise en charge et traçabilité des interventions techniques."
         icon={LifeBuoy}
       >
-          <Button
-            variant="outline"
-            size="default"
-            onClick={loadData}
-            className="h-10 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 hover:text-white"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
-            Actualiser
-          </Button>
+        <Button
+          variant="outline"
+          size="default"
+          onClick={loadData}
+          className="h-10 border-slate-700 bg-[#0b1220] text-slate-200 hover:text-white"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin text-green-400" : ""}`} />
+          Actualiser
+        </Button>
 
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="h-10 gap-2 bg-green-600 px-4 text-white hover:bg-green-500"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Créer un ticket
-          </Button>
+        <Button
+          onClick={() => setIsModalOpen(true)}
+          className="h-10 gap-2 bg-green-600 px-4 text-white hover:bg-green-500 shadow-sm"
+        >
+          <Plus className="h-4 w-4" />
+          Nouveau ticket
+        </Button>
       </PageHeader>
 
+      {/* Règle métier rappel */}
+      <div className="p-3.5 rounded-xl bg-green-950/20 border border-green-800/40 text-xs text-green-300 flex items-center justify-between">
+        <span className="flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+          <span>
+            <strong>Règle de gestion (RG07 / CT08) :</strong> Un ticket est rattaché à une seule intervention au maximum. La résolution technique est formellement distinguée de la clôture administrative (RG09).
+          </span>
+        </span>
+      </div>
+
       {/* Barre de filtres */}
-      <Card className="border-slate-800 bg-slate-900/80 p-4">
+      <Card className="border-slate-800 bg-[#111c30] p-4 shadow-sm">
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
             <Input
               type="text"
-              placeholder="Rechercher par numéro, demandeur, description..."
+              placeholder="Rechercher par numéro, demandeur, catégorie, description..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-slate-950/60 border-slate-700 text-white placeholder:text-slate-500 focus-visible:border-teal-500"
+              className="pl-9 bg-[#0b1220] border-slate-700 text-white placeholder:text-slate-500 focus-visible:border-green-500"
             />
           </div>
 
@@ -218,7 +302,7 @@ export default function TicketsPage() {
             <select
               value={filterStatut}
               onChange={(e) => setFilterStatut(e.target.value)}
-              className="h-10 rounded-lg bg-slate-950/60 border border-slate-700 px-3 text-sm text-white outline-none focus:border-green-500"
+              className="h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-xs text-white outline-none focus:border-green-500"
             >
               <option value="tous">Tous les statuts</option>
               <option value="nouveau">Nouveau</option>
@@ -231,9 +315,9 @@ export default function TicketsPage() {
             <select
               value={filterPriorite}
               onChange={(e) => setFilterPriorite(e.target.value)}
-              className="h-10 rounded-lg bg-slate-950/60 border border-slate-700 px-3 text-sm text-white outline-none focus:border-green-500"
+              className="h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-xs text-white outline-none focus:border-green-500"
             >
-              <option value="tous">Toutes priorités</option>
+              <option value="tous">Toutes les priorités</option>
               <option value="basse">Basse</option>
               <option value="normale">Normale</option>
               <option value="haute">Haute</option>
@@ -244,7 +328,7 @@ export default function TicketsPage() {
               type="submit"
               size="sm"
               variant="outline"
-              className="border-slate-700 bg-slate-950 text-slate-200 hover:text-white"
+              className="border-slate-700 bg-[#0b1220] text-slate-200 hover:text-white"
             >
               Filtrer
             </Button>
@@ -253,14 +337,14 @@ export default function TicketsPage() {
       </Card>
 
       {/* Tableau des Tickets */}
-      <Card className="border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
+      <Card className="border-slate-800 bg-[#111c30] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#0d1728] border-b border-slate-800 text-slate-400 font-medium">
+            <thead className="bg-[#0b1220] border-b border-slate-800 text-slate-400 font-medium text-xs">
               <tr>
                 <th className="py-3 px-4">Référence</th>
                 <th className="py-3 px-4">Demandeur & Service</th>
-                <th className="py-3 px-4">Description du problème</th>
+                <th className="py-3 px-4">Problème signalé</th>
                 <th className="py-3 px-4">Priorité</th>
                 <th className="py-3 px-4">Canal</th>
                 <th className="py-3 px-4">Statut</th>
@@ -271,15 +355,15 @@ export default function TicketsPage() {
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-teal-400 mb-2" />
-                    Chargement des demandes d&apos;assistance...
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-green-500 mb-2" />
+                    Chargement des demandes d'assistance...
                   </td>
                 </tr>
               ) : tickets.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-500">
                     <FileQuestion className="h-8 w-8 mx-auto text-slate-600 mb-2" />
-                    Aucun ticket trouvé selon les critères.
+                    Aucun ticket trouvé.
                   </td>
                 </tr>
               ) : (
@@ -290,7 +374,7 @@ export default function TicketsPage() {
                   return (
                     <tr key={t.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="font-mono font-bold text-teal-400 text-xs">
+                        <div className="font-mono font-bold text-green-400 text-xs">
                           {formatNumeroTicket(t.numero)}
                         </div>
                         <div className="text-xs text-slate-500">
@@ -306,22 +390,22 @@ export default function TicketsPage() {
                         </div>
                       </td>
                       <td className="py-3 px-4 max-w-xs">
-                        <div className="text-slate-300 font-medium line-clamp-2">
+                        <div className="text-slate-200 font-medium line-clamp-2 text-xs">
                           {t.description}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded">
+                          <span className="text-[11px] text-slate-400 bg-[#0b1220] px-1.5 py-0.5 rounded border border-slate-800">
                             {t.categorie}
                           </span>
                           {t.equipement_label && (
-                            <span className="text-xs text-green-300 truncate max-w-[140px]">
+                            <span className="text-[11px] text-green-300 truncate max-w-[140px]">
                               {t.equipement_label}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium border ${prioriteInfo.badgeClass}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${prioriteInfo.badgeClass}`}>
                           {prioriteInfo.label}
                         </span>
                       </td>
@@ -329,7 +413,7 @@ export default function TicketsPage() {
                         {CANAUX_TICKETS[t.canal] || t.canal}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium border ${statutInfo.badgeClass}`}>
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${statutInfo.badgeClass}`}>
                           {statutInfo.label}
                         </span>
                       </td>
@@ -337,14 +421,11 @@ export default function TicketsPage() {
                         <Button
                           variant="ghost"
                           size="xs"
-                          onClick={() => {
-                            setActiveTicket(t);
-                            setNewStatut(t.statut);
-                          }}
-                          className="text-slate-400 hover:text-white hover:bg-slate-800"
+                          onClick={() => openTicketModal(t)}
+                          className="text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5"
                         >
-                          <Wrench className="h-3.5 w-3.5 mr-1 text-teal-400" />
-                          Gérer
+                          <Wrench className="h-3.5 w-3.5 text-green-400" />
+                          Traiter / Intervenir
                         </Button>
                       </td>
                     </tr>
@@ -356,271 +437,269 @@ export default function TicketsPage() {
         </div>
       </Card>
 
-      {/* Modal Création de Ticket */}
+      {/* Modal Création de Ticket (par l'Admin pour lui-même ou au nom d'un employé) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <Card className="w-full max-w-lg border-slate-700 bg-slate-900 text-slate-100 shadow-2xl my-8">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#111c30] p-6 shadow-2xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div>
-                <CardTitle className="text-lg font-bold text-white">
-                  Nouvelle Demande d&apos;Assistance
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Enregistrer un incident ou un besoin matériel
-                </CardDescription>
+                <h2 className="text-lg font-bold text-white">Nouvelle Demande d'Assistance</h2>
+                <p className="text-xs text-slate-400">
+                  Enregistrer un incident (saisie directe ou au nom d'un employé).
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
-            </CardHeader>
+            </div>
 
-            <form onSubmit={handleCreateTicket}>
-              <CardContent className="space-y-3.5 pt-4 text-xs">
-                {/* Demandeur */}
+            <form onSubmit={handleCreateTicket} className="mt-4 space-y-3.5">
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-300">Employé demandeur *</Label>
+                <select
+                  required
+                  value={formDemandeurId}
+                  onChange={(e) => setFormDemandeurId(e.target.value)}
+                  className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                >
+                  {employes.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.prenom} {emp.nom} ({emp.service_nom || "Sans service"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="demandeur" className="text-slate-300">
-                    Employé demandeur *
-                  </Label>
+                  <Label className="text-xs text-slate-300">Catégorie *</Label>
                   <select
-                    id="demandeur"
-                    required
-                    value={formDemandeurId}
-                    onChange={(e) => setFormDemandeurId(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                    value={formCategorie}
+                    onChange={(e) => setFormCategorie(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
                   >
-                    {employes.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.prenom} {emp.nom} ({emp.service_nom || "Sans service"})
+                    {CATEGORIES_TICKETS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
                       </option>
                     ))}
                   </select>
                 </div>
-
-                {/* Catégorie & Canal */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="cat" className="text-slate-300">
-                      Catégorie *
-                    </Label>
-                    <select
-                      id="cat"
-                      value={formCategorie}
-                      onChange={(e) => setFormCategorie(e.target.value)}
-                      className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
-                    >
-                      {CATEGORIES_TICKETS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="canal" className="text-slate-300">
-                      Canal de réception
-                    </Label>
-                    <select
-                      id="canal"
-                      value={formCanal}
-                      onChange={(e) => setFormCanal(e.target.value as CanalTicket)}
-                      className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
-                    >
-                      <option value="application">Application Web</option>
-                      <option value="telephone">Téléphone</option>
-                      <option value="email">E-mail</option>
-                      <option value="presentiel">Présentiel / Bureau IT</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Priorité & Équipement */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="prio" className="text-slate-300">
-                      Degré de priorité
-                    </Label>
-                    <select
-                      id="prio"
-                      value={formPriorite}
-                      onChange={(e) => setFormPriorite(e.target.value as PrioriteTicket)}
-                      className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
-                    >
-                      <option value="basse">Basse</option>
-                      <option value="normale">Normale</option>
-                      <option value="haute">Haute</option>
-                      <option value="critique">Critique</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="eq" className="text-slate-300">
-                      Équipement lié (optionnel)
-                    </Label>
-                    <select
-                      id="eq"
-                      value={formEquipementId}
-                      onChange={(e) => setFormEquipementId(e.target.value)}
-                      className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
-                    >
-                      <option value="">Aucun équipement spécifique</option>
-                      {equipements.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.type} • {e.marque} ({e.numero_serie || "S/N inconnu"})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Description */}
                 <div className="space-y-1">
-                  <Label htmlFor="desc" className="text-slate-300">
-                    Description détaillée du problème *
-                  </Label>
-                  <textarea
-                    id="desc"
-                    required
-                    rows={3}
-                    placeholder="Décrivez les symptômes, messages d'erreur et circonstances..."
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 p-2 text-xs text-white placeholder:text-slate-500 outline-none focus:border-teal-500"
-                  />
+                  <Label className="text-xs text-slate-300">Canal de réception</Label>
+                  <select
+                    value={formCanal}
+                    onChange={(e) => setFormCanal(e.target.value as CanalTicket)}
+                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                  >
+                    <option value="application">Application Web</option>
+                    <option value="telephone">Téléphone</option>
+                    <option value="email">E-mail</option>
+                    <option value="presentiel">Présentiel / Bureau IT</option>
+                  </select>
                 </div>
-              </CardContent>
+              </div>
 
-              <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Priorité</Label>
+                  <select
+                    value={formPriorite}
+                    onChange={(e) => setFormPriorite(e.target.value as PrioriteTicket)}
+                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                  >
+                    <option value="basse">Basse</option>
+                    <option value="normale">Normale</option>
+                    <option value="haute">Haute</option>
+                    <option value="critique">Critique</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Équipement lié (optionnel)</Label>
+                  <select
+                    value={formEquipementId}
+                    onChange={(e) => setFormEquipementId(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                  >
+                    <option value="">Aucun équipement spécifique</option>
+                    {equipements.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.type} • {e.marque} ({e.numero_serie || "S/N inconnu"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-300">Description détaillée du problème *</Label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Circonstances, message d'erreur, urgence opérationnelle..."
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  className="w-full rounded-lg bg-[#0b1220] border border-slate-700 p-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-green-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
                   onClick={() => setIsModalOpen(false)}
-                  className="text-slate-400 hover:text-white"
+                  className="border-slate-700 text-slate-300"
                 >
                   Annuler
                 </Button>
                 <Button
                   type="submit"
-                  size="sm"
                   disabled={isSubmitting}
                   className="bg-green-600 hover:bg-green-500 text-white font-medium"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                      Enregistrement...
-                    </>
-                  ) : (
-                    "Enregistrer le ticket"
-                  )}
+                  {isSubmitting ? "Enregistrement..." : "Créer le ticket"}
                 </Button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       )}
 
-      {/* Modal Traitement Ticket & Intervention */}
+      {/* Modal Traitement Ticket & Intervention Unique */}
       {activeTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <Card className="w-full max-w-lg border-slate-700 bg-slate-900 text-slate-100 shadow-2xl my-8">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-[#111c30] p-6 shadow-2xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div>
-                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-teal-400" />
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-green-400" />
                   Traitement du Ticket {formatNumeroTicket(activeTicket.numero)}
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-400">
-                  Demandeur : {activeTicket.demandeur_nom} • {activeTicket.service_nom}
-                </CardDescription>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Demandeur : {activeTicket.demandeur_nom} · {activeTicket.service_nom || "Service inconnu"}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveTicket(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
-            </CardHeader>
+            </div>
 
-            <form onSubmit={handleUpdateTicket}>
-              <CardContent className="space-y-4 pt-4 text-xs">
-                {/* Rappel du problème */}
-                <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-slate-400 block text-xs">Problème signalé :</span>
-                  <p className="text-slate-300 font-medium">{activeTicket.description}</p>
+            <form onSubmit={handleUpdateTicket} className="mt-4 space-y-4">
+              {/* Résumé du problème */}
+              <div className="p-3.5 rounded-xl bg-[#0b1220] border border-slate-800 space-y-1">
+                <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block">
+                  Problème déclaré :
+                </span>
+                <p className="text-sm text-slate-200">{activeTicket.description}</p>
+                {activeTicket.equipement_label && (
+                  <p className="text-xs text-green-400 mt-1">
+                    Équipement concerné : {activeTicket.equipement_label}
+                  </p>
+                )}
+              </div>
+
+              {/* Statut du Ticket */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-300 font-medium">
+                  Statut du ticket *
+                </Label>
+                <select
+                  value={newStatut}
+                  onChange={(e) => setNewStatut(e.target.value as StatutTicket)}
+                  className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500 font-medium"
+                >
+                  <option value="nouveau">Nouveau</option>
+                  <option value="en_cours">En cours de traitement</option>
+                  <option value="en_attente">En attente (pièces / retour utilisateur)</option>
+                  <option value="resolu">Résolu (intervention effectuée)</option>
+                  <option value="cloture">Clôturé définitivement (validation service)</option>
+                </select>
+                <p className="text-[11px] text-slate-400">
+                  {newStatut === "resolu" && "Note : Le ticket sera marqué comme techniquement résolu. La clôture administrative pourra être effectuée après confirmation."}
+                  {newStatut === "cloture" && "Note : Clôture administrative définitive. Le ticket sera figé pour traçabilité."}
+                </p>
+              </div>
+
+              {/* Section Intervention Unique */}
+              <div className="p-4 rounded-xl bg-[#0b1220] border border-slate-800 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
+                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    <span>Rapport d'intervention technique unique</span>
+                  </div>
+                  {computeDuree() && (
+                    <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">
+                      Durée : {computeDuree()}
+                    </span>
+                  )}
                 </div>
 
-                {/* Nouveau Statut */}
-                <div className="space-y-1">
-                  <Label htmlFor="statut" className="text-slate-300">
-                    Statut du ticket
-                  </Label>
-                  <select
-                    id="statut"
-                    value={newStatut}
-                    onChange={(e) => setNewStatut(e.target.value as StatutTicket)}
-                    className="w-full h-10 rounded-lg bg-slate-950 border border-slate-700 px-3 text-sm text-white focus:border-green-500"
-                  >
-                    <option value="nouveau">Nouveau</option>
-                    <option value="en_cours">En cours de traitement</option>
-                    <option value="en_attente">En attente (pièces / prestataire)</option>
-                    <option value="resolu">Résolu</option>
-                    <option value="cloture">Clôturé définitivement</option>
-                  </select>
-                </div>
-
-                {/* Rapport d'intervention */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                    <span>Compte-rendu d&apos;intervention technique</span>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label htmlFor="actions" className="text-slate-400">
-                      Actions réalisées
-                    </Label>
-                    <textarea
-                      id="actions"
-                      rows={3}
-                      placeholder="Diagnostic effectué, composants nettoyés ou remplacés, tests..."
-                      value={actionIntervention}
-                      onChange={(e) => setActionIntervention(e.target.value)}
-                      className="w-full rounded-lg bg-slate-950 border border-slate-700 p-2 text-xs text-white placeholder:text-slate-500 outline-none focus:border-teal-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="res" className="text-slate-400">
-                      Résultat technique
-                    </Label>
+                    <Label className="text-xs text-slate-300">Date et heure de début</Label>
                     <Input
-                      id="res"
-                      placeholder="ex: Résolu avec succès, équipement rendu fonctionnel"
-                      value={resultatIntervention}
-                      onChange={(e) => setResultatIntervention(e.target.value)}
-                      className="bg-slate-950 border-slate-700 text-white"
+                      type="datetime-local"
+                      value={intDebut}
+                      onChange={(e) => setIntDebut(e.target.value)}
+                      className="bg-[#111c30] border-slate-700 text-white text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-300">Date et heure de fin</Label>
+                    <Input
+                      type="datetime-local"
+                      value={intFin}
+                      onChange={(e) => setIntFin(e.target.value)}
+                      className="bg-[#111c30] border-slate-700 text-white text-xs"
                     />
                   </div>
                 </div>
-              </CardContent>
 
-              <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">
+                    Actions techniques réalisées
+                  </Label>
+                  <textarea
+                    rows={3}
+                    placeholder="Démontage, nettoyage, test ping réseau, remplacement câble, réinstallation système..."
+                    value={actionIntervention}
+                    onChange={(e) => setActionIntervention(e.target.value)}
+                    className="w-full rounded-lg bg-[#111c30] border border-slate-700 p-2.5 text-xs text-white placeholder:text-slate-500 outline-none focus:border-green-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">
+                    Résultat de l'intervention
+                  </Label>
+                  <Input
+                    placeholder="ex: Problème résolu avec succès, matériel opérationnel remis à l'employé"
+                    value={resultatIntervention}
+                    onChange={(e) => setResultatIntervention(e.target.value)}
+                    className="bg-[#111c30] border-slate-700 text-white text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
                   onClick={() => setActiveTicket(null)}
-                  className="text-slate-400 hover:text-white"
+                  className="border-slate-700 text-slate-300"
                 >
-                  Fermer
+                  Annuler
                 </Button>
                 <Button
                   type="submit"
-                  size="sm"
                   disabled={isResolving}
                   className="bg-green-600 hover:bg-green-500 text-white font-medium"
                 >
@@ -630,12 +709,12 @@ export default function TicketsPage() {
                       Mise à jour...
                     </>
                   ) : (
-                    "Enregistrer l'intervention"
+                    "Enregistrer le traitement"
                   )}
                 </Button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       )}
     </div>

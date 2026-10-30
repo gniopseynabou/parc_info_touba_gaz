@@ -10,8 +10,9 @@ Application web interne d'entreprise développée pour **Touba Gaz SA**, permett
 - **Frontend :** React 19, TypeScript
 - **Design System :** Tailwind CSS 4, shadcn/ui, Lucide React, Sonner
 - **Base de Données :** MySQL (port 3306, base `parc_info_touba_gaz`)
-- **Connecteur SQL :** `mysql2/promise` avec pool de connexions
-- **Bundler :** Webpack (`--webpack`)
+- **Connecteur SQL :** `mysql2/promise` avec pool de connexions sécurisé
+- **Authentification :** Cookie de session httpOnly signé par signature HMAC-SHA256, hachage bcrypt pour les mots de passe
+- **Bundler :** Webpack (`--webpack`) adapté à l'environnement Windows
 
 ---
 
@@ -19,10 +20,10 @@ Application web interne d'entreprise développée pour **Touba Gaz SA**, permett
 
 ### 1. Prérequis
 - Node.js installé (v18+)
-- MySQL démarré via XAMPP (port 3306)
+- MySQL démarré via XAMPP ou MariaDB (port 3306)
 
 ### 2. Variables d'environnement (`.env.local`)
-Créer ou vérifier le fichier `.env.local` à la racine :
+Vérifier le fichier `.env.local` à la racine :
 ```env
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -31,18 +32,21 @@ DB_PASSWORD=
 DB_NAME=parc_info_touba_gaz
 ```
 
-### 3. Schéma et Données Initiales
-Pour initialiser ou réinitialiser la base de données :
-```bash
-# Dans PowerShell :
-node -e "require('dotenv').config({ path: '.env.local' }); const fs = require('fs'); const mysql = require('mysql2/promise'); (async () => { const conn = await mysql.createConnection({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, multipleStatements: true }); await conn.query(fs.readFileSync('database/schema.sql', 'utf8')); await conn.query(fs.readFileSync('database/seed.sql', 'utf8')); console.log('Base initialisée !'); await conn.end(); })();"
+### 3. Initialisation de la Base de Données
+Pour initialiser le schéma officiel et injecter le jeu de données de référence :
+```powershell
+node -e "require('dotenv').config({ path: '.env.local' }); const fs = require('fs'); const mysql = require('mysql2/promise'); (async () => { const conn = await mysql.createConnection({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, multipleStatements: true }); await conn.query(fs.readFileSync('database/schema.sql', 'utf8')); await conn.query(fs.readFileSync('database/seed.sql', 'utf8')); console.log('Base initialisée avec succès !'); await conn.end(); })();"
 ```
 
-### 4. Lancer le serveur de développement
+### 4. Lancer l'Application
 ```bash
 npm run dev
 ```
-Ouvrez ensuite : [http://localhost:3000](http://localhost:3000)
+Accès à l'application : [http://localhost:3000](http://localhost:3000)
+
+### 5. Comptes d'Accès de Démonstration
+- **Administrateur IT :** `admin@toubagaz.sn` / `ToubaGaz@2026` (ou `admin123`) → Accès au **Dashboard IT**
+- **Collaborateur Employé :** `abisene@toubagaz.sn` / `ToubaGaz@2026` → Accès à **l'Espace Employé**
 
 ---
 
@@ -51,57 +55,87 @@ Ouvrez ensuite : [http://localhost:3000](http://localhost:3000)
 ```text
 parc_info_touba_gaz/
 ├── database/
-│   ├── schema.sql                     # Script DDL de création des 8 tables
-│   └── seed.sql                       # Données de démonstration Touba Gaz
+│   ├── schema.sql                     # Script DDL officiel des 8 tables relationnelles
+│   └── seed.sql                       # Données de référence et comptes Touba Gaz
+├── scripts/
+│   ├── backup-db.ps1                  # Sauvegarde automatisée non-interactive (rétention 30j)
+│   ├── restore-db.ps1                 # Procédure de restauration de sinistre (DRP)
+│   └── test-e2e-scenario.js           # Validation E2E automatisée des 14 étapes métier
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/
-│   │   │   ├── layout.tsx             # Shell global (Sidebar + Topbar)
-│   │   │   ├── page.tsx               # Tableau de bord principal (KPIs, stats)
+│   │   ├── dashboard/
+│   │   │   ├── layout.tsx             # Shell IT (Sidebar navigation + Topbar)
+│   │   │   ├── page.tsx               # Supervision générale (KPIs réels MySQL, pannes, par service)
 │   │   │   ├── equipements/
-│   │   │   │   ├── page.tsx           # Inventaire du parc (recherche, filtres, modal ajout)
-│   │   │   │   └── [id]/page.tsx      # Fiche technique détaillée & historique
+│   │   │   │   ├── page.tsx           # Inventaire du parc (recherche, filtres type/état, modal édition rapide)
+│   │   │   │   └── [id]/page.tsx      # Fiche technique détaillée & historique complet des affectations
 │   │   │   ├── employes/
-│   │   │   │   └── page.tsx           # Répertoire du personnel & affectations
+│   │   │   │   └── page.tsx           # Répertoire du personnel, rattachement service & comptes
 │   │   │   ├── services/
-│   │   │   │   └── page.tsx           # Directions et départements
+│   │   │   │   └── page.tsx           # Directions, départements et comptage équipements/employés
 │   │   │   ├── affectations/
-│   │   │   │   └── page.tsx           # Gestion des attributions (Employé ou Service)
-│   │   │   └── tickets/
-│   │   │       └── page.tsx           # Suivi des incidents & interventions
-│   │   ├── api/
-│   │   │   ├── health/route.ts        # Test de santé de la connexion MySQL
-│   │   │   ├── dashboard/stats/       # Agrégation des KPIs en direct
-│   │   │   ├── equipements/           # CRUD Équipements
-│   │   │   ├── employes/              # CRUD Employés
-│   │   │   ├── services/              # CRUD Services
-│   │   │   ├── affectations/          # CRUD Affectations
-│   │   │   └── tickets/               # CRUD Tickets & Interventions
+│   │   │   │   └── page.tsx           # Gestion des attributions (Employé ou Service) & restitution
+│   │   │   ├── tickets/
+│   │   │   │   └── page.tsx           # Traitement des incidents, intervention technique & clôture
+│   │   │   └── rapports/
+│   │   │       └── page.tsx           # Bilans périodiques, durées cumulées & vue imprimable officielle
+│   │   ├── espace-employe/
+│   │   │   └── page.tsx               # Portail employé : dotations reçues & demandes personnelles
+│   │   ├── api/                       # Routes API sécurisées avec contrôle des rôles serveur
 │   │   ├── layout.tsx                 # Root Layout Next.js
 │   │   ├── page.tsx                   # Page de connexion Touba Gaz IT
-│   │   └── globals.css                # Styles Tailwind & variables thématiques
-│   ├── components/
-│   │   ├── layout/
-│   │   │   ├── sidebar.tsx            # Barre latérale navigation & profil
-│   │   │   ├── topbar.tsx             # Barre supérieure & statut MySQL
-│   │   │   └── shell.tsx              # Wrapper responsive
-│   │   └── ui/                        # Composants shadcn/ui
+│   │   └── globals.css                # Styles thématiques industriels Touba Gaz
+│   ├── components/                    # Composants d'interface (UI shadcn, Layout, Header)
 │   ├── lib/
-│   │   ├── db.ts                      # Pool de connexions MySQL (mysql2/promise)
-│   │   └── constants.ts               # Libellés, statuts, priorités et catégories
-│   └── types/
-│       └── index.ts                   # Modèles de données TypeScript
-├── .env.local                         # Paramètres secrets exclus de Git
-├── components.json                    # Configuration shadcn/ui
-├── package.json                       # Scripts et dépendances
-└── tsconfig.json                      # Configuration TypeScript
+│   │   ├── db.ts                      # Pool de connexions MySQL2 optimisé
+│   │   ├── auth.ts                    # Vérification des rôles, session HMAC-SHA256 & bcrypt
+│   │   └── constants.ts               # Dictionnaires métier, statuts et priorités
+│   ├── types/
+│   │   └── index.ts                   # Modèles de données TypeScript
+│   └── proxy.ts                       # Middleware de routage et contrôle d'accès
+├── PROCEDURE_SAUVEGARDE.md            # Guide d'exploitation des sauvegardes & restauration
+├── package.json                       # Scripts npm configurés avec bundler Webpack
+└── tsconfig.json                      # Configuration TypeScript stricte
 ```
 
 ---
 
-## 🔒 Règles Métier Implémentées
+## 🔒 Règles Métier et Conformité Cahier des Charges
 
-1. **Rôle Applicatif :** Administrateur IT (gestion complète, enregistrement d'incidents par tout canal) et Employé.
-2. **Règle d'Affectation :** Un équipement est attribué **soit à un employé, soit à un service**, jamais les deux en même temps.
-3. **Règle d'Intervention :** Chaque ticket peut faire l'objet au maximum d'une intervention enregistrée avec contrainte d'unicité SQL.
-4. **Statuts des Tickets :** `nouveau`, `en_cours`, `en_attente`, `resolu`, `cloture`.
+1. **Rôles V1 :** 
+   - `admin` (Administrateur IT) : supervision, gestion intégrale du parc, affectations, interventions et rapports.
+   - `employe` (Collaborateur) : consultation restreinte à ses équipements dotés et suivi de ses propres tickets.
+2. **Règle d'Affectation (CT06 / RG08) :**
+   - Un équipement est affecté **soit à un employé individuel, soit à un service**, jamais les deux en même temps.
+   - Lors d'une réaffectation, l'affectation active précédente est clôturée avec date de fin et l'historique complet est conservé (RG09).
+3. **Règle d'Intervention (CT08 / RG07) :**
+   - Chaque ticket ne peut être associé qu'à **une seule intervention au maximum**, garantie par contrainte SQL `UNIQUE KEY (ticket_id)`.
+   - L'intervention enregistre les dates/heures de début et fin, la durée calculée, les actions techniques et le résultat.
+4. **Cycle de Vie du Ticket (RG09 / RG15) :**
+   - Statuts : `nouveau` → `en_cours` → `en_attente` → `resolu` → `cloture`.
+   - La **résolution technique** est formellement distinguée de la **clôture administrative** finale.
+5. **Fiabilité du Tableau de Bord :**
+   - Données 100% réelles issues de MySQL.
+   - En cas d'erreur de base, affichage d'un panneau explicite (aucun 0 artificiel trompeur).
+   - Taux de disponibilité calculé en excluant les équipements réformés et archivés.
+6. **Sauvegarde & Sécurité :**
+   - Fichiers `.env.local` et dossier `/backups/` protégés et exclus de Git.
+   - Script de sauvegarde PowerShell automatisé non-interactif avec rotation de rétention de 30 jours.
+
+---
+
+## 🧪 Validation & Tests
+
+Pour exécuter le scénario complet de test de bout en bout (14 étapes métier) :
+```powershell
+node scripts\test-e2e-scenario.js
+```
+Pour tester la sauvegarde et la restauration :
+```powershell
+.\scripts\backup-db.ps1
+Get-ChildItem .\backups\ -Filter "*.sql" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { .\scripts\restore-db.ps1 -BackupFile $_.FullName -Force }
+```
+Pour compiler l'application :
+```bash
+npm run build
+```

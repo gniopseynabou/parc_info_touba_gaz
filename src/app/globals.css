@@ -136,8 +136,7 @@
 }
 
 .auth-brand {
-  grid-column: 1;
-  grid-row: 2;
+  display: none;
 }
 
 .auth-panel {
@@ -151,6 +150,7 @@
   }
 
   .auth-brand {
+    display: flex;
     grid-column: 1;
     grid-row: 1;
   }

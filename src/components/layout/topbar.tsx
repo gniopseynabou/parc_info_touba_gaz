@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
-import { Menu } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { Menu, LogOut, User, Shield } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 const BREADCRUMB_MAP: Record<string, string> = {
   "/dashboard": "Vue d’ensemble",
@@ -21,8 +23,39 @@ export function Topbar({
   onOpenMenu: () => void;
   isMenuOpen: boolean;
 }) {
+  const router = useRouter();
+  const [userName, setUserName] = useState("Administrateur IT");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("touba_gaz_user");
+      if (stored) {
+        try {
+          const user = JSON.parse(stored);
+          if (user.nom) setUserName(user.nom);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("touba_gaz_user");
+    }
+    toast.success("Déconnexion réussie.");
+    router.push("/");
+  };
+
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/90 bg-[#0b1220]/95 px-4 sm:px-6 lg:px-8">
+      {/* Côté gauche : Breadcrumb & Menu Mobile */}
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
@@ -42,9 +75,27 @@ export function Topbar({
           </Suspense>
         </div>
       </div>
-      <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
-        <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden="true" />
-        <span className="hidden sm:inline">Portail informatique</span>
+
+      {/* Côté droit : Profil Admin et Bouton Déconnexion clair et visible */}
+      <div className="flex items-center gap-3">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs">
+          <Shield className="h-3.5 w-3.5 text-green-400" />
+          <span className="text-slate-200 font-medium truncate max-w-[150px]">{userName}</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded bg-green-500/10 text-green-400 font-semibold">
+            Admin
+          </span>
+        </div>
+
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5 border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-900/40 hover:text-white transition-colors"
+          title="Se déconnecter de la session"
+        >
+          <LogOut className="h-3.5 w-3.5 text-rose-400" />
+          <span className="text-xs font-semibold">Déconnexion</span>
+        </Button>
       </div>
     </header>
   );

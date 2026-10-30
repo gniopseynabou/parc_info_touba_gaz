@@ -4,7 +4,6 @@ import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { requireAuth } from "@/lib/auth";
 
-
 export async function GET(req: Request) {
   try {
     const authResult = await requireAuth(req);
@@ -15,6 +14,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() ?? "";
     const etat = searchParams.get("etat") ?? "tous";
+    const type = searchParams.get("type") ?? "tous";
     const archive = searchParams.get("archive") === "true";
 
     let query = `
@@ -36,6 +36,11 @@ export async function GET(req: Request) {
     if (etat !== "tous") {
       query += ` AND e.etat = ?`;
       params.push(etat);
+    }
+
+    if (type !== "tous") {
+      query += ` AND e.type = ?`;
+      params.push(type);
     }
 
     if (search) {

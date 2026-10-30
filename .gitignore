@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Touba Gaz - Sauvegardes & Dumps
+/backups/
+*.sql
+!database/schema.sql
+!database/seed.sql

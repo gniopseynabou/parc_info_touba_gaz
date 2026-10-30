@@ -2,7 +2,7 @@
 
 **Document technique de référence :** `Analyse_des_besoins_v1.2.docx` (Besoins B7, RG12, CT12)  
 **Application :** Gestion du Parc Informatique et Suivi des Demandes d'Assistance  
-**Système de Gestion de Base de Données (SGBD) :** MySQL 8.x / MariaDB  
+**Système de Gestion de Base de Données (SGBD) :** MySQL 8.x / MariaDB (port 3306)  
 **Nom de la base de données :** `parc_info_touba_gaz`  
 
 ---
@@ -13,9 +13,10 @@ Pour assurer la continuité des activités de Touba Gaz et la préservation de l
 
 1. **Sauvegarde Quotidienne Automatisée :**  
    - Exécution chaque soir à **23h00**.  
-   - Type : Sauvegarde logique complète (structure des tables + données).  
-   - Rétention : Conservation des 30 derniers jours de sauvegardes.  
-   - Emplacement local : `parc_info_touba_gaz/backups/`.  
+   - Type : Sauvegarde logique complète (structure des tables + contraintes + données).  
+   - Rétention : Conservation des **30 derniers jours** de sauvegardes avec purge automatique des archives antérieures.  
+   - Emplacement local : `parc_info_touba_gaz/backups/` (répertoire exclu de Git par `.gitignore`).  
+   - Mode : **100% Non interactif**, lecture sécurisée des identifiants depuis `.env.local` sans mot de passe en clair exposé dans la ligne de commande système (fichier d'options temporaire protégé `--defaults-extra-file`).
 
 2. **Sauvegarde Hebdomadaire Hors-Site (Recommandation IT) :**  
    - Copie du fichier de sauvegarde du vendredi sur un support externe sécurisé ou cloud interne.
@@ -26,7 +27,7 @@ Pour assurer la continuité des activités de Touba Gaz et la préservation de l
 
 Pour effectuer une sauvegarde immédiate (avant une mise à jour ou une intervention majeure) :
 
-### Option A — Avec le script PowerShell fourni
+### Option A — Avec le script PowerShell fourni (Recommandé)
 
 Ouvrez un terminal PowerShell dans le répertoire du projet et lancez :
 
@@ -35,9 +36,10 @@ Ouvrez un terminal PowerShell dans le répertoire du projet et lancez :
 ```
 
 Le script :
-- Détecte automatiquement l'utilitaire `mysqldump`.
-- Génère un fichier nommé `backup_parc_info_touba_gaz_AAAAMMJJ_HHMMSS.sql` dans le dossier `backups/`.
-- Purge automatiquement les fichiers plus vieux que 30 jours.
+- Charge automatiquement les paramètres de connexion depuis `.env.local`.
+- Détecte automatiquement l'utilitaire `mysqldump` (XAMPP, Laragon, MySQL Server).
+- Génère un fichier nommé `backup_parc_info_touba_gaz_AAAAMMJJ_HHMMSS.sql` dans `backups/`.
+- Purge automatiquement les fichiers plus vieux que 30 jours (RG12).
 
 ### Option B — Ligne de commande directe `mysqldump`
 
@@ -77,21 +79,15 @@ Get-ChildItem -Path ".\backups\" -Filter "*.sql" | Sort-Object LastWriteTime -De
 ### Étape 2 : Lancer la restauration avec le script
 
 ```powershell
-.\scripts\restore-db.ps1 -BackupFile ".\backups\backup_parc_info_touba_gaz_20261030_120000.sql"
+.\scripts\restore-db.ps1 -BackupFile ".\backups\backup_parc_info_touba_gaz_20261030_100938.sql"
 ```
 
-Le script demandera confirmation avant d'injecter les données dans la base MySQL.
+Le script demande confirmation `(O/N)` avant d'injecter les données dans la base MySQL. Pour les automatisations de test, l'option `-Force` permet d'outrepasser la confirmation.
 
-### Étape 3 : Restauration manuelle (alternative)
-
-```powershell
-mysql -u root -p parc_info_touba_gaz < backups\nom_du_fichier.sql
-```
-
-### Étape 4 : Contrôles de validation post-restauration
+### Étape 3 : Contrôles de validation post-restauration
 
 Une fois la restauration terminée, exécuter les contrôles de cohérence :
-1. Se connecter à l'application web Touba Gaz.
+1. Se connecter à l'application web Touba Gaz (`admin@toubagaz.sn`).
 2. Vérifier le tableau de bord (nombre d'équipements et d'incidents).
 3. Contrôler l'historique d'un équipement et vérifier la présence de ses affectations passées.
 4. Générer le rapport d'activité pour vérifier l'exactitude des calculs.
