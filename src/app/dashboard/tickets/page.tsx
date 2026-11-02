@@ -42,7 +42,7 @@ export default function TicketsPage() {
   const [filterStatut, setFilterStatut] = useState<string>("tous");
   const [filterPriorite, setFilterPriorite] = useState<string>("tous");
 
-  // Modal Nouveau Ticket (Enregistrement employé ou par IT au nom d'un employé)
+  // Modal Nouveau Ticket
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formDemandeurId, setFormDemandeurId] = useState("");
@@ -126,13 +126,13 @@ export default function TicketsPage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success("Demande d'assistance enregistrée avec succès !");
+        toast.success(`Ticket ${formatNumeroTicket(json.data.numero)} créé avec succès.`);
         setIsModalOpen(false);
         setFormDescription("");
         setFormEquipementId("");
         loadData();
       } else {
-        toast.error(json.message || "Erreur lors de la création.");
+        toast.error(json.message || "Erreur lors de la création du ticket.");
       }
     } catch {
       toast.error("Erreur serveur.");
@@ -144,57 +144,49 @@ export default function TicketsPage() {
   const openTicketModal = async (ticket: Ticket) => {
     setActiveTicket(ticket);
     setNewStatut(ticket.statut);
+    setActionIntervention("");
+    setResultatIntervention("");
 
-    // Initialisation des dates d'intervention (actuelles ou existantes)
     const now = new Date();
-    const nowLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    
-    // Charger les détails du ticket pour récupérer l'intervention rattachée
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const formattedNow = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    setIntDebut(formattedNow);
+    setIntFin(formattedNow);
+
     try {
       const res = await fetch(`/api/tickets/${ticket.id}`);
       const json = await res.json();
-      if (res.ok && json.success && json.data.intervention_actions) {
-        const d = json.data;
-        setActionIntervention(d.intervention_actions || "");
-        setResultatIntervention(d.intervention_resultat || "");
-        setIntDebut(d.intervention_debut ? d.intervention_debut.slice(0, 16).replace(" ", "T") : nowLocal);
-        setIntFin(d.intervention_fin ? d.intervention_fin.slice(0, 16).replace(" ", "T") : nowLocal);
-      } else {
-        setActionIntervention("");
-        setResultatIntervention("");
-        setIntDebut(nowLocal);
-        setIntFin(nowLocal);
+      if (res.ok && json.success && json.data.intervention) {
+        const intv = json.data.intervention;
+        setActionIntervention(intv.actions || "");
+        setResultatIntervention(intv.resultat || "");
+        if (intv.date_debut) {
+          setIntDebut(intv.date_debut.slice(0, 16));
+        }
+        if (intv.date_fin) {
+          setIntFin(intv.date_fin.slice(0, 16));
+        }
       }
     } catch {
-      setActionIntervention("");
-      setResultatIntervention("");
-      setIntDebut(nowLocal);
-      setIntFin(nowLocal);
+      // ignore
     }
   };
 
-  // Calcul de la durée estimée
   const computeDuree = () => {
     if (!intDebut || !intFin) return null;
-    const diffMs = new Date(intFin).getTime() - new Date(intDebut).getTime();
-    if (diffMs < 0) return "Date de fin antérieure au début !";
-    const minutes = Math.floor(diffMs / (1000 * 60));
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h === 0) return `${m} minute${m > 1 ? "s" : ""}`;
-    return `${h} h ${m > 0 ? `${m} min` : ""}`;
+    const d1 = new Date(intDebut).getTime();
+    const d2 = new Date(intFin).getTime();
+    if (isNaN(d1) || isNaN(d2) || d2 <= d1) return null;
+    const diffMinutes = Math.round((d2 - d1) / 60000);
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    if (hours === 0) return `${mins} min`;
+    return `${hours}h ${mins > 0 ? `${mins}m` : ""}`;
   };
 
   const handleUpdateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTicket) return;
-
-    if (actionIntervention.trim()) {
-      if (intDebut && intFin && new Date(intFin).getTime() < new Date(intDebut).getTime()) {
-        toast.error("La date et heure de fin ne peuvent pas être antérieures au début.");
-        return;
-      }
-    }
 
     setIsResolving(true);
     try {
@@ -259,15 +251,15 @@ export default function TicketsPage() {
           variant="outline"
           size="default"
           onClick={loadData}
-          className="h-10 border-slate-700 bg-[#0b1220] text-slate-200 hover:text-white"
+          className="h-10 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin text-green-400" : ""}`} />
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
           Actualiser
         </Button>
 
         <Button
           onClick={() => setIsModalOpen(true)}
-          className="h-10 gap-2 bg-green-600 px-4 text-white hover:bg-green-500 shadow-sm"
+          className="h-10 gap-2 bg-emerald-600 px-4 text-white hover:bg-emerald-700 shadow-xs font-semibold cursor-pointer"
         >
           <Plus className="h-4 w-4" />
           Nouveau ticket
@@ -275,9 +267,9 @@ export default function TicketsPage() {
       </PageHeader>
 
       {/* Règle métier rappel */}
-      <div className="p-3.5 rounded-xl bg-green-950/20 border border-green-800/40 text-xs text-green-300 flex items-center justify-between">
+      <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
         <span className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>
             <strong>Règle de gestion (RG07 / CT08) :</strong> Un ticket est rattaché à une seule intervention au maximum. La résolution technique est formellement distinguée de la clôture administrative (RG09).
           </span>
@@ -285,16 +277,16 @@ export default function TicketsPage() {
       </div>
 
       {/* Barre de filtres */}
-      <Card className="border-slate-800 bg-[#111c30] p-4 shadow-sm">
+      <Card className="border border-slate-200 bg-white p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
               placeholder="Rechercher par numéro, demandeur, catégorie, description..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-[#0b1220] border-slate-700 text-white placeholder:text-slate-500 focus-visible:border-green-500"
+              className="pl-9"
             />
           </div>
 
@@ -302,7 +294,7 @@ export default function TicketsPage() {
             <select
               value={filterStatut}
               onChange={(e) => setFilterStatut(e.target.value)}
-              className="h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-xs text-white outline-none focus:border-green-500"
+              className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
             >
               <option value="tous">Tous les statuts</option>
               <option value="nouveau">Nouveau</option>
@@ -315,7 +307,7 @@ export default function TicketsPage() {
             <select
               value={filterPriorite}
               onChange={(e) => setFilterPriorite(e.target.value)}
-              className="h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-xs text-white outline-none focus:border-green-500"
+              className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
             >
               <option value="tous">Toutes les priorités</option>
               <option value="basse">Basse</option>
@@ -328,7 +320,7 @@ export default function TicketsPage() {
               type="submit"
               size="sm"
               variant="outline"
-              className="border-slate-700 bg-[#0b1220] text-slate-200 hover:text-white"
+              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
             >
               Filtrer
             </Button>
@@ -337,10 +329,10 @@ export default function TicketsPage() {
       </Card>
 
       {/* Tableau des Tickets */}
-      <Card className="border-slate-800 bg-[#111c30] overflow-hidden shadow-sm">
+      <Card className="border border-slate-200 bg-white overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#0b1220] border-b border-slate-800 text-slate-400 font-medium text-xs">
+            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-4">Référence</th>
                 <th className="py-3 px-4">Demandeur & Service</th>
@@ -351,18 +343,18 @@ export default function TicketsPage() {
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+            <tbody className="divide-y divide-slate-100 text-slate-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-green-500 mb-2" />
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
                     Chargement des demandes d'assistance...
                   </td>
                 </tr>
               ) : tickets.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-500">
-                    <FileQuestion className="h-8 w-8 mx-auto text-slate-600 mb-2" />
+                    <FileQuestion className="h-8 w-8 mx-auto text-slate-400 mb-2" />
                     Aucun ticket trouvé.
                   </td>
                 </tr>
@@ -372,44 +364,44 @@ export default function TicketsPage() {
                   const prioriteInfo = PRIORITES_TICKETS[t.priorite] || { label: t.priorite, badgeClass: "" };
 
                   return (
-                    <tr key={t.id} className="hover:bg-slate-800/40 transition-colors">
+                    <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="font-mono font-bold text-green-400 text-xs">
+                        <div className="font-mono font-bold text-emerald-700 text-xs">
                           {formatNumeroTicket(t.numero)}
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs text-slate-400">
                           {formatDateFr(t.created_at)}
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-white">
+                        <div className="font-semibold text-slate-900">
                           {t.demandeur_nom}
                         </div>
-                        <div className="text-xs text-slate-400">
+                        <div className="text-xs text-slate-500">
                           {t.service_nom || "Non assigné"}
                         </div>
                       </td>
                       <td className="py-3 px-4 max-w-xs">
-                        <div className="text-slate-200 font-medium line-clamp-2 text-xs">
+                        <div className="text-slate-800 font-medium line-clamp-2 text-xs">
                           {t.description}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[11px] text-slate-400 bg-[#0b1220] px-1.5 py-0.5 rounded border border-slate-800">
+                          <span className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                             {t.categorie}
                           </span>
                           {t.equipement_label && (
-                            <span className="text-[11px] text-green-300 truncate max-w-[140px]">
+                            <span className="text-[11px] text-emerald-700 font-medium truncate max-w-[140px]">
                               {t.equipement_label}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${prioriteInfo.badgeClass}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border ${prioriteInfo.badgeClass}`}>
                           {prioriteInfo.label}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-400 text-xs">
+                      <td className="py-3 px-4 text-slate-500 text-xs">
                         {CANAUX_TICKETS[t.canal] || t.canal}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -422,9 +414,9 @@ export default function TicketsPage() {
                           variant="ghost"
                           size="xs"
                           onClick={() => openTicketModal(t)}
-                          className="text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5"
+                          className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
                         >
-                          <Wrench className="h-3.5 w-3.5 text-green-400" />
+                          <Wrench className="h-3.5 w-3.5 text-emerald-600" />
                           Traiter / Intervenir
                         </Button>
                       </td>
@@ -437,21 +429,21 @@ export default function TicketsPage() {
         </div>
       </Card>
 
-      {/* Modal Création de Ticket (par l'Admin pour lui-même ou au nom d'un employé) */}
+      {/* Modal Création de Ticket */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#111c30] p-6 shadow-2xl my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <h2 className="text-lg font-bold text-white">Nouvelle Demande d'Assistance</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className="text-lg font-bold text-slate-900">Nouvelle Demande d'Assistance</h2>
+                <p className="text-xs text-slate-500">
                   Enregistrer un incident (saisie directe ou au nom d'un employé).
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -459,12 +451,12 @@ export default function TicketsPage() {
 
             <form onSubmit={handleCreateTicket} className="mt-4 space-y-3.5">
               <div className="space-y-1">
-                <Label className="text-xs text-slate-300">Employé demandeur *</Label>
+                <Label className="text-xs font-semibold text-slate-700">Employé demandeur *</Label>
                 <select
                   required
                   value={formDemandeurId}
                   onChange={(e) => setFormDemandeurId(e.target.value)}
-                  className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                  className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                 >
                   {employes.map((emp) => (
                     <option key={emp.id} value={emp.id}>
@@ -476,11 +468,11 @@ export default function TicketsPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">Catégorie *</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Catégorie *</Label>
                   <select
                     value={formCategorie}
                     onChange={(e) => setFormCategorie(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
                     {CATEGORIES_TICKETS.map((c) => (
                       <option key={c} value={c}>
@@ -490,11 +482,11 @@ export default function TicketsPage() {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">Canal de réception</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Canal de réception</Label>
                   <select
                     value={formCanal}
                     onChange={(e) => setFormCanal(e.target.value as CanalTicket)}
-                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
                     <option value="application">Application Web</option>
                     <option value="telephone">Téléphone</option>
@@ -506,11 +498,11 @@ export default function TicketsPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">Priorité</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Priorité</Label>
                   <select
                     value={formPriorite}
                     onChange={(e) => setFormPriorite(e.target.value as PrioriteTicket)}
-                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
                     <option value="basse">Basse</option>
                     <option value="normale">Normale</option>
@@ -518,12 +510,13 @@ export default function TicketsPage() {
                     <option value="critique">Critique</option>
                   </select>
                 </div>
+
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">Équipement lié (optionnel)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Équipement lié (optionnel)</Label>
                   <select
                     value={formEquipementId}
                     onChange={(e) => setFormEquipementId(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500"
+                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
                     <option value="">Aucun équipement spécifique</option>
                     {equipements.map((e) => (
@@ -536,30 +529,30 @@ export default function TicketsPage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs text-slate-300">Description détaillée du problème *</Label>
+                <Label className="text-xs font-semibold text-slate-700">Description détaillée du problème *</Label>
                 <textarea
                   required
                   rows={3}
                   placeholder="Circonstances, message d'erreur, urgence opérationnelle..."
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  className="w-full rounded-lg bg-[#0b1220] border border-slate-700 p-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-green-500"
+                  className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsModalOpen(false)}
-                  className="border-slate-700 text-slate-300"
+                  className="border-slate-200 text-slate-700 hover:bg-slate-50"
                 >
                   Annuler
                 </Button>
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-green-600 hover:bg-green-500 text-white font-medium"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                 >
                   {isSubmitting ? "Enregistrement..." : "Créer le ticket"}
                 </Button>
@@ -571,22 +564,22 @@ export default function TicketsPage() {
 
       {/* Modal Traitement Ticket & Intervention Unique */}
       {activeTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-[#111c30] p-6 shadow-2xl my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-green-400" />
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-emerald-600" />
                   Traitement du Ticket {formatNumeroTicket(activeTicket.numero)}
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Demandeur : {activeTicket.demandeur_nom} · {activeTicket.service_nom || "Service inconnu"}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveTicket(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -594,13 +587,13 @@ export default function TicketsPage() {
 
             <form onSubmit={handleUpdateTicket} className="mt-4 space-y-4">
               {/* Résumé du problème */}
-              <div className="p-3.5 rounded-xl bg-[#0b1220] border border-slate-800 space-y-1">
-                <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
                   Problème déclaré :
                 </span>
-                <p className="text-sm text-slate-200">{activeTicket.description}</p>
+                <p className="text-sm text-slate-900 font-medium">{activeTicket.description}</p>
                 {activeTicket.equipement_label && (
-                  <p className="text-xs text-green-400 mt-1">
+                  <p className="text-xs text-emerald-700 font-medium mt-1">
                     Équipement concerné : {activeTicket.equipement_label}
                   </p>
                 )}
@@ -608,13 +601,13 @@ export default function TicketsPage() {
 
               {/* Statut du Ticket */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-300 font-medium">
+                <Label className="text-xs text-slate-700 font-semibold">
                   Statut du ticket *
                 </Label>
                 <select
                   value={newStatut}
                   onChange={(e) => setNewStatut(e.target.value as StatutTicket)}
-                  className="w-full h-10 rounded-lg bg-[#0b1220] border border-slate-700 px-3 text-sm text-white focus:border-green-500 font-medium"
+                  className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 font-semibold shadow-xs"
                 >
                   <option value="nouveau">Nouveau</option>
                   <option value="en_cours">En cours de traitement</option>
@@ -622,21 +615,21 @@ export default function TicketsPage() {
                   <option value="resolu">Résolu (intervention effectuée)</option>
                   <option value="cloture">Clôturé définitivement (validation service)</option>
                 </select>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-500">
                   {newStatut === "resolu" && "Note : Le ticket sera marqué comme techniquement résolu. La clôture administrative pourra être effectuée après confirmation."}
                   {newStatut === "cloture" && "Note : Clôture administrative définitive. Le ticket sera figé pour traçabilité."}
                 </p>
               </div>
 
               {/* Section Intervention Unique */}
-              <div className="p-4 rounded-xl bg-[#0b1220] border border-slate-800 space-y-3.5">
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 space-y-3.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span>Rapport d'intervention technique unique</span>
                   </div>
                   {computeDuree() && (
-                    <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">
+                    <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                       Durée : {computeDuree()}
                     </span>
                   )}
@@ -644,27 +637,27 @@ export default function TicketsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs text-slate-300">Date et heure de début</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Date et heure de début</Label>
                     <Input
                       type="datetime-local"
                       value={intDebut}
                       onChange={(e) => setIntDebut(e.target.value)}
-                      className="bg-[#111c30] border-slate-700 text-white text-xs"
+                      className="text-xs"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-slate-300">Date et heure de fin</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Date et heure de fin</Label>
                     <Input
                       type="datetime-local"
                       value={intFin}
                       onChange={(e) => setIntFin(e.target.value)}
-                      className="bg-[#111c30] border-slate-700 text-white text-xs"
+                      className="text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">
+                  <Label className="text-xs font-semibold text-slate-700">
                     Actions techniques réalisées
                   </Label>
                   <textarea
@@ -672,36 +665,36 @@ export default function TicketsPage() {
                     placeholder="Démontage, nettoyage, test ping réseau, remplacement câble, réinstallation système..."
                     value={actionIntervention}
                     onChange={(e) => setActionIntervention(e.target.value)}
-                    className="w-full rounded-lg bg-[#111c30] border border-slate-700 p-2.5 text-xs text-white placeholder:text-slate-500 outline-none focus:border-green-500"
+                    className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs text-slate-300">
+                  <Label className="text-xs font-semibold text-slate-700">
                     Résultat de l'intervention
                   </Label>
                   <Input
                     placeholder="ex: Problème résolu avec succès, matériel opérationnel remis à l'employé"
                     value={resultatIntervention}
                     onChange={(e) => setResultatIntervention(e.target.value)}
-                    className="bg-[#111c30] border-slate-700 text-white text-xs"
+                    className="text-xs"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setActiveTicket(null)}
-                  className="border-slate-700 text-slate-300"
+                  className="border-slate-200 text-slate-700 hover:bg-slate-50"
                 >
                   Annuler
                 </Button>
                 <Button
                   type="submit"
                   disabled={isResolving}
-                  className="bg-green-600 hover:bg-green-500 text-white font-medium"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                 >
                   {isResolving ? (
                     <>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import { Menu, LogOut, User, Shield } from "lucide-react";
+import { Menu, LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function Topbar({
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/90 bg-[#0b1220]/95 px-4 sm:px-6 lg:px-8">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#E2E8F0] bg-white px-4 sm:px-6 lg:px-8">
       {/* Côté gauche : Breadcrumb & Menu Mobile */}
       <div className="flex min-w-0 items-center gap-3">
         <button
@@ -63,25 +63,25 @@ export function Topbar({
           aria-label="Ouvrir le menu"
           aria-expanded={isMenuOpen}
           aria-controls="primary-navigation"
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 lg:hidden"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 lg:hidden"
         >
           <Menu className="h-5 w-5" aria-hidden="true" />
         </button>
         <div className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="hidden text-slate-500 sm:inline">Touba Gaz</span>
-          <span className="hidden text-slate-600 sm:inline">/</span>
-          <Suspense fallback={<span className="text-slate-400">Espace IT</span>}>
+          <span className="hidden text-slate-400 sm:inline">Touba Gaz</span>
+          <span className="hidden text-slate-300 sm:inline">/</span>
+          <Suspense fallback={<span className="text-slate-500">Espace IT</span>}>
             <CurrentBreadcrumb />
           </Suspense>
         </div>
       </div>
 
-      {/* Côté droit : Profil Admin et Bouton Déconnexion clair et visible */}
+      {/* Côté droit : Profil Admin et Bouton Déconnexion */}
       <div className="flex items-center gap-3">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs">
-          <Shield className="h-3.5 w-3.5 text-green-400" />
-          <span className="text-slate-200 font-medium truncate max-w-[150px]">{userName}</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded bg-green-500/10 text-green-400 font-semibold">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+          <Shield className="h-3.5 w-3.5 text-emerald-600" />
+          <span className="text-slate-700 font-medium truncate max-w-[150px]">{userName}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
             Admin
           </span>
         </div>
@@ -90,10 +90,10 @@ export function Topbar({
           onClick={handleLogout}
           variant="outline"
           size="sm"
-          className="h-9 gap-1.5 border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-900/40 hover:text-white transition-colors"
+          className="h-9 gap-1.5 border-rose-200 bg-white text-rose-700 hover:bg-rose-50 hover:text-rose-800 shadow-2xs transition-colors"
           title="Se déconnecter de la session"
         >
-          <LogOut className="h-3.5 w-3.5 text-rose-400" />
+          <LogOut className="h-3.5 w-3.5 text-rose-600" />
           <span className="text-xs font-semibold">Déconnexion</span>
         </Button>
       </div>
@@ -103,9 +103,7 @@ export function Topbar({
 
 function CurrentBreadcrumb() {
   const pathname = usePathname();
-  const currentTitle =
-    BREADCRUMB_MAP[pathname] ||
-    (pathname.startsWith("/dashboard/equipements/") ? "Fiche équipement" : "Espace IT");
+  const label = BREADCRUMB_MAP[pathname] || "Détail de l'élément";
 
-  return <span className="truncate font-medium text-slate-200">{currentTitle}</span>;
+  return <span className="font-semibold text-slate-800 truncate">{label}</span>;
 }

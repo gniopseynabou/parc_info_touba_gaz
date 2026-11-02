@@ -27,7 +27,7 @@ export function RefreshButton() {
       size="sm"
       onClick={handleRefresh}
       disabled={isPending}
-      className="h-10 border-slate-700 bg-slate-900/60 px-4 text-slate-200 hover:bg-slate-800 hover:text-white"
+      className="h-10 border-slate-200 bg-white px-4 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-xs"
     >
       <RefreshCw className={`h-4 w-4 ${spinning || isPending ? "animate-spin" : ""}`} aria-hidden="true" />
       Actualiser

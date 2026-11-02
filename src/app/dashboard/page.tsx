@@ -13,7 +13,6 @@ import {
   Clock,
   Wrench,
   Archive,
-  RefreshCw,
   ServerCrash,
 } from "lucide-react";
 import {
@@ -175,18 +174,17 @@ async function getDashboardData(): Promise<{
 async function DashboardContent() {
   const result = await getDashboardData();
 
-  // Règle stricte du prompt : Ne jamais transformer une erreur MySQL en 0 artificiel !
   if (!result.success || !result.stats) {
     return (
       <div className="space-y-6">
-        <section className="flex flex-col gap-4 rounded-2xl border border-rose-900/40 bg-rose-950/20 p-8 shadow-sm text-center max-w-2xl mx-auto my-12">
-          <ServerCrash className="h-12 w-12 text-rose-400 mx-auto" />
-          <h2 className="text-xl font-bold text-white">Échec de communication avec MySQL</h2>
-          <p className="text-sm text-rose-300">
+        <section className="flex flex-col gap-4 rounded-xl border border-rose-200 bg-rose-50/70 p-8 shadow-xs text-center max-w-2xl mx-auto my-12">
+          <ServerCrash className="h-12 w-12 text-rose-600 mx-auto" />
+          <h2 className="text-xl font-bold text-slate-900">Échec de communication avec MySQL</h2>
+          <p className="text-sm text-rose-700">
             {result.errorMessage || "Impossible de contacter le serveur de base de données."}
           </p>
-          <p className="text-xs text-slate-400">
-            Veuillez vérifier que le serveur MySQL (XAMPP/MariaDB port 3306) est démarré et que les accès définis dans <code className="text-slate-300">.env.local</code> sont valides.
+          <p className="text-xs text-slate-500">
+            Veuillez vérifier que le serveur MySQL (XAMPP/MariaDB port 3306) est démarré et que les accès définis dans <code className="text-slate-700 font-mono">.env.local</code> sont valides.
           </p>
           <div className="pt-4 flex justify-center">
             <RefreshButton />
@@ -198,46 +196,41 @@ async function DashboardContent() {
 
   const { stats, recentTickets = [], equipementsParService = [], snapshotTime } = result;
 
-  // Calculs rigoureux demandés dans le cahier des charges :
-  // Équipements actifs au parc (excluant les réformés et archivés)
+  // Calculs :
   const equipementsActifs = Math.max(0, stats.totalEquipements - stats.equipementsReformes);
   
-  // Taux de disponibilité : En service / Équipements actifs (hors réformés)
   const tauxDisponibilite = equipementsActifs > 0
     ? Math.round((stats.equipementsEnService / equipementsActifs) * 100)
     : 100;
 
-  // Tickets ouverts nécessitant une action (Nouveau + En cours + En attente)
   const ticketsOuverts = stats.ticketsNouveaux + stats.ticketsEnCours + stats.ticketsEnAttente;
-
-  // Tickets résolus en attente de clôture administrative (RG09, RG15)
   const ticketsResolusEnAttenteCloture = stats.ticketsResolus;
 
   return (
     <div className="space-y-7">
       {/* En-tête éditorial Touba Gaz */}
-      <section className="flex flex-col gap-5 rounded-2xl border border-slate-800 bg-[#111c30] p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-7">
+      <section className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div className="max-w-2xl">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-green-400">
+          <p className="mb-1 text-xs font-bold uppercase tracking-wider text-emerald-600">
             Supervision du parc informatique · Touba Gaz SA
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-[30px]">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             Tableau de bord de gestion
           </h1>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
+          <p className="mt-1 text-sm leading-6 text-slate-500">
             État du matériel, inventaire, disponibilité opérationnelle et suivi des demandes d'assistance.
           </p>
           {snapshotTime && (
-            <p className="mt-1 text-xs text-slate-500 flex items-center gap-1.5">
-              <Clock className="h-3 w-3 text-slate-400" />
+            <p className="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-slate-400" />
               Données actualisées le {snapshotTime}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           <RefreshButton />
           <Link href="/dashboard/tickets">
-            <Button className="h-10 gap-2 bg-green-600 px-4 text-white hover:bg-green-500 shadow-sm">
+            <Button className="h-10 gap-2 bg-emerald-600 px-4 text-white hover:bg-emerald-700 shadow-xs cursor-pointer">
               <Plus className="h-4 w-4" aria-hidden="true" />
               Nouveau ticket
             </Button>
@@ -247,80 +240,80 @@ async function DashboardContent() {
 
       {/* Bloc 1 : Indicateurs clés du Parc Informatique */}
       <div>
-        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
           Parc informatique & Disponibilité
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">Parc Actif</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-white tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Parc Actif</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
                   {equipementsActifs}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">{stats.totalEquipements} recensés au total</p>
+                <p className="mt-1 text-xs text-slate-500">{stats.totalEquipements} recensés au total</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-green-400 bg-green-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-700 bg-slate-100">
                 <Laptop className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">En service</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-green-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En service</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
                   {stats.equipementsEnService}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">{tauxDisponibilite} % de disponibilité</p>
+                <p className="mt-1 text-xs text-slate-500">{tauxDisponibilite} % de disponibilité</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-green-400 bg-green-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-emerald-600 bg-emerald-50 ring-1 ring-emerald-200/50">
                 <CheckCircle2 className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">En panne</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-rose-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En panne</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-rose-600 tabular-nums">
                   {stats.equipementsEnPanne}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Diagnostic requis</p>
+                <p className="mt-1 text-xs text-slate-500">Diagnostic requis</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-rose-400 bg-rose-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-rose-600 bg-rose-50 ring-1 ring-rose-200/50">
                 <AlertTriangle className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">En maintenance</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-amber-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En maintenance</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-amber-600 tabular-nums">
                   {stats.equipementsEnMaintenance}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Intervention en atelier</p>
+                <p className="mt-1 text-xs text-slate-500">Intervention en atelier</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-400 bg-amber-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-600 bg-amber-50 ring-1 ring-amber-200/50">
                 <Wrench className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">Réformés</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Réformés</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-500 tabular-nums">
                   {stats.equipementsReformes}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Amortis / hors circuit</p>
+                <p className="mt-1 text-xs text-slate-500">Amortis / hors circuit</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 bg-slate-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 bg-slate-100">
                 <Archive className="h-5 w-5" />
               </span>
             </CardContent>
@@ -328,82 +321,82 @@ async function DashboardContent() {
         </div>
       </div>
 
-      {/* Bloc 2 : Demandes d'assistance (Tickets & Statuts rigoureux) */}
+      {/* Bloc 2 : Demandes d'assistance (Tickets & Statuts) */}
       <div>
-        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
           Demandes d'assistance & Cycle de vie
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">Nouveaux</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-sky-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nouveaux</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-sky-600 tabular-nums">
                   {stats.ticketsNouveaux}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">À prendre en charge</p>
+                <p className="mt-1 text-xs text-slate-500">À prendre en charge</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sky-400 bg-sky-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sky-600 bg-sky-50 ring-1 ring-sky-200/50">
                 <LifeBuoy className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">En cours</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-amber-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En cours</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-amber-600 tabular-nums">
                   {stats.ticketsEnCours}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Traitement IT actif</p>
+                <p className="mt-1 text-xs text-slate-500">Traitement IT actif</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-400 bg-amber-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-600 bg-amber-50 ring-1 ring-amber-200/50">
                 <Wrench className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">En attente</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-purple-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En attente</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-purple-600 tabular-nums">
                   {stats.ticketsEnAttente}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Pièce ou retour employé</p>
+                <p className="mt-1 text-xs text-slate-500">Pièce ou retour employé</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-purple-400 bg-purple-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-purple-600 bg-purple-50 ring-1 ring-purple-200/50">
                 <Clock className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">Résolus</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-emerald-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Résolus</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
                   {ticketsResolusEnAttenteCloture}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">En attente de clôture</p>
+                <p className="mt-1 text-xs text-slate-500">En attente de clôture</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-emerald-400 bg-emerald-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-emerald-600 bg-emerald-50 ring-1 ring-emerald-200/50">
                 <CheckCircle2 className="h-5 w-5" />
               </span>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-[#111c30] shadow-sm">
+          <Card className="border border-slate-200 bg-white shadow-xs">
             <CardContent className="flex items-start justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400 uppercase">Clôturés</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-400 tabular-nums">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clôturés</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-500 tabular-nums">
                   {stats.ticketsClotures}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">Vérifiés et archivés</p>
+                <p className="mt-1 text-xs text-slate-500">Vérifiés et archivés</p>
               </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 bg-slate-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 bg-slate-100">
                 <Archive className="h-5 w-5" />
               </span>
             </CardContent>
@@ -413,21 +406,21 @@ async function DashboardContent() {
 
       {/* Bloc 3 : Deux colonnes d'analyse détaillée */}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {/* Ventilation des équipements par Service (demandée au cahier des charges) */}
-        <Card className="border-slate-800 bg-[#111c30] shadow-sm">
-          <CardHeader className="border-b border-slate-800/80 px-5 py-4 flex flex-row items-center justify-between">
+        {/* Ventilation des équipements par Service */}
+        <Card className="border border-slate-200 bg-white shadow-xs">
+          <CardHeader className="border-b border-slate-100 px-5 py-4 flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-white">
-                <Building2 className="h-4 w-4 text-green-400" />
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <Building2 className="h-4 w-4 text-emerald-600" />
                 Équipements par service
               </CardTitle>
-              <CardDescription className="text-sm text-slate-400">
+              <CardDescription className="text-sm text-slate-500">
                 Ventilation du matériel affecté par direction de Touba Gaz
               </CardDescription>
             </div>
             <Link
               href="/dashboard/affectations"
-              className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1"
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
             >
               Affectations <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -445,14 +438,14 @@ async function DashboardContent() {
                   return (
                     <div key={srv.service_nom} className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-slate-200">{srv.service_nom}</span>
-                        <span className="font-semibold text-green-400 tabular-nums">
+                        <span className="font-medium text-slate-700">{srv.service_nom}</span>
+                        <span className="font-semibold text-emerald-700 tabular-nums">
                           {srv.total_equipements} <span className="text-slate-500 font-normal">équip.</span>
                         </span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
                         <div
-                          className="h-full bg-green-500 rounded-full transition-all duration-500"
+                          className="h-full bg-emerald-600 rounded-full transition-all duration-500"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -465,20 +458,20 @@ async function DashboardContent() {
         </Card>
 
         {/* Derniers tickets enregistrés avec statut */}
-        <Card className="border-slate-800 bg-[#111c30] shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-slate-800/80 px-5 py-4">
+        <Card className="border border-slate-200 bg-white shadow-xs">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-white">
-                <LifeBuoy className="h-4 w-4 text-green-400" />
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <LifeBuoy className="h-4 w-4 text-emerald-600" />
                 Derniers signalements d'assistance
               </CardTitle>
-              <CardDescription className="mt-0.5 text-sm text-slate-400">
+              <CardDescription className="mt-0.5 text-sm text-slate-500">
                 {ticketsOuverts} demandes en cours de traitement
               </CardDescription>
             </div>
             <Link
               href="/dashboard/tickets"
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-green-300 hover:text-green-200"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700"
             >
               Tous les tickets <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -486,32 +479,32 @@ async function DashboardContent() {
           <CardContent className="p-0">
             {recentTickets.length === 0 ? (
               <div className="px-5 py-10 text-center">
-                <p className="text-sm font-medium text-slate-300">Aucun ticket enregistré</p>
+                <p className="text-sm font-medium text-slate-700">Aucun ticket enregistré</p>
                 <p className="mt-1 text-xs text-slate-500">
                   Les nouveaux signalements apparaîtront ici.
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-slate-800/80">
+              <ul className="divide-y divide-slate-100">
                 {recentTickets.map((ticket) => {
                   const status = STATUTS_TICKETS[ticket.statut];
                   const priority = PRIORITES_TICKETS[ticket.priorite];
                   return (
-                    <li key={ticket.id} className="px-5 py-3.5 transition-colors hover:bg-slate-800/30">
+                    <li key={ticket.id} className="px-5 py-3.5 transition-colors hover:bg-slate-50/70">
                       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-mono text-xs font-semibold text-green-300">
+                            <span className="font-mono text-xs font-semibold text-emerald-700">
                               {formatNumeroTicket(ticket.numero)}
                             </span>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-slate-400">
                               {formatDateFr(ticket.created_at)}
                             </span>
                           </div>
-                          <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-100">
+                          <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-900">
                             {ticket.description}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-400">
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
                             {ticket.demandeur_nom || "Demandeur inconnu"}
                             {ticket.service_nom ? ` · ${ticket.service_nom}` : ""}
                           </p>
@@ -542,44 +535,44 @@ async function DashboardContent() {
       <section aria-label="Raccourcis de gestion" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
           href="/dashboard/equipements"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-800 bg-[#111c30] p-4 transition-colors hover:border-green-700/60 hover:bg-[#14243a]"
+          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500/10 text-green-400">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
             <Laptop className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-slate-100">Gérer le parc</span>
-            <span className="mt-0.5 block text-xs text-slate-400">{stats.totalEquipements} équipements enregistrés</span>
+            <span className="block text-sm font-semibold text-slate-900">Gérer le parc</span>
+            <span className="mt-0.5 block text-xs text-slate-500">{stats.totalEquipements} équipements enregistrés</span>
           </span>
-          <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-green-300" />
+          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
         </Link>
 
         <Link
           href="/dashboard/affectations"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-800 bg-[#111c30] p-4 transition-colors hover:border-green-700/60 hover:bg-[#14243a]"
+          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500/10 text-green-400">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
             <Share2 className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-slate-100">Affectations du matériel</span>
-            <span className="mt-0.5 block text-xs text-slate-400">{stats.totalAffectationsActives} attributions en cours</span>
+            <span className="block text-sm font-semibold text-slate-900">Affectations du matériel</span>
+            <span className="mt-0.5 block text-xs text-slate-500">{stats.totalAffectationsActives} attributions en cours</span>
           </span>
-          <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-green-300" />
+          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
         </Link>
 
         <Link
           href="/dashboard/rapports"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-800 bg-[#111c30] p-4 transition-colors hover:border-green-700/60 hover:bg-[#14243a]"
+          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500/10 text-green-400">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
             <TrendingUp className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-slate-100">Rapports d'activité</span>
-            <span className="mt-0.5 block text-xs text-slate-400">Édition et vue imprimable</span>
+            <span className="block text-sm font-semibold text-slate-900">Rapports d'activité</span>
+            <span className="mt-0.5 block text-xs text-slate-500">Édition et vue imprimable</span>
           </span>
-          <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-green-300" />
+          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
         </Link>
       </section>
     </div>
@@ -589,18 +582,18 @@ async function DashboardContent() {
 function DashboardFallback() {
   return (
     <div className="space-y-7" aria-label="Chargement du tableau de bord" aria-busy="true">
-      <div className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-[#111c30]" />
+      <div className="h-36 animate-pulse rounded-xl border border-slate-200 bg-white" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
           <div
             key={index}
-            className="h-28 animate-pulse rounded-xl border border-slate-800 bg-[#111c30]"
+            className="h-28 animate-pulse rounded-xl border border-slate-200 bg-white"
           />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="h-72 animate-pulse rounded-xl border border-slate-800 bg-[#111c30]" />
-        <div className="h-72 animate-pulse rounded-xl border border-slate-800 bg-[#111c30]" />
+        <div className="h-72 animate-pulse rounded-xl border border-slate-200 bg-white" />
+        <div className="h-72 animate-pulse rounded-xl border border-slate-200 bg-white" />
       </div>
     </div>
   );

@@ -15,11 +15,13 @@ export function PageHeader({
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-white sm:text-[26px]">
-          <Icon className="h-5 w-5 shrink-0 text-green-400" aria-hidden="true" />
-          <span>{title}</span>
+        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-[26px]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="truncate">{title}</span>
         </h1>
-        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-400">
+        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
           {description}
         </p>
       </div>
