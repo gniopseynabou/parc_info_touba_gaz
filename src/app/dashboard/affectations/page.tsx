@@ -12,6 +12,8 @@ import {
   FileQuestion,
   CheckCircle2,
   CheckSquare,
+  AlertCircle,
+  Laptop,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,13 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { Affectation, Equipement, Employe, Service } from "@/types";
-import { formatDateFr } from "@/lib/constants";
+import { formatDateFr, formatCodeEquipement } from "@/lib/constants";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function AffectationsPage() {
   const [affectations, setAffectations] = useState<Affectation[]>([]);
-  const [equipements, setEquipements] = useState<Equipement[]>([]);
+  const [equipementsDispo, setEquipementsDispo] = useState<Equipement[]>([]);
   const [employes, setEmployes] = useState<Employe[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +37,7 @@ export default function AffectationsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedEqId, setSelectedEqId] = useState("");
   const [cibleType, setCibleType] = useState<"employe" | "service">("employe");
+  const [filterModalService, setFilterModalService] = useState<string>("tous");
   const [selectedCibleId, setSelectedCibleId] = useState("");
   const [dateDebut, setDateDebut] = useState("");
   const [commentaire, setCommentaire] = useState("");
@@ -44,7 +47,7 @@ export default function AffectationsPage() {
     try {
       const [resAff, resEq, resEmp, resSrv] = await Promise.all([
         fetch("/api/affectations"),
-        fetch("/api/equipements"),
+        fetch("/api/equipements?disponible=true"),
         fetch("/api/employes"),
         fetch("/api/services"),
       ]);
@@ -56,8 +59,12 @@ export default function AffectationsPage() {
 
       if (jsonAff.success) setAffectations(jsonAff.data);
       if (jsonEq.success) {
-        setEquipements(jsonEq.data);
-        if (jsonEq.data.length > 0 && !selectedEqId) setSelectedEqId(jsonEq.data[0].id);
+        setEquipementsDispo(jsonEq.data);
+        if (jsonEq.data.length > 0) {
+          setSelectedEqId(jsonEq.data[0].id);
+        } else {
+          setSelectedEqId("");
+        }
       }
       if (jsonEmp.success) {
         setEmployes(jsonEmp.data);
@@ -77,10 +84,30 @@ export default function AffectationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Employés filtrés pour la sélection liée (cascading dropdown)
+  const filteredEmployesForModal = filterModalService === "tous"
+    ? employes
+    : employes.filter((e) => e.service_id === filterModalService);
+
+  // Ajuster l'employé sélectionné si le filtre de service change
+  useEffect(() => {
+    if (cibleType === "employe") {
+      if (filteredEmployesForModal.length > 0) {
+        setSelectedCibleId(filteredEmployesForModal[0].id);
+      } else {
+        setSelectedCibleId("");
+      }
+    }
+  }, [filterModalService, cibleType]);
+
   const handleCreateAffectation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEqId || !selectedCibleId) {
-      toast.error("Veuillez sélectionner un équipement et un bénéficiaire.");
+    if (!selectedEqId) {
+      toast.error("Veuillez sélectionner un équipement disponible.");
+      return;
+    }
+    if (!selectedCibleId) {
+      toast.error("Veuillez sélectionner un bénéficiaire (employé ou service).");
       return;
     }
 
@@ -131,7 +158,7 @@ export default function AffectationsPage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success("Affectation clôturée. Le matériel est réintégré en stock.");
+        toast.success("Affectation clôturée. Le matériel est réintégré en stock disponible.");
         loadData();
       } else {
         toast.error(json.message || "Erreur lors de la clôture.");
@@ -158,7 +185,7 @@ export default function AffectationsPage() {
             className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
             title="Rafraîchir"
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
           </Button>
 
           <Button
@@ -270,7 +297,7 @@ export default function AffectationsPage() {
                             size="sm"
                             onClick={() => handleCloturerAffectation(aff)}
                             className="h-8 border-slate-200 bg-white text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 shadow-2xs"
-                            title="Clôturer cette affectation (restituer le matériel)"
+                            title="Clôturer cette affectation (restituer le matériel au stock)"
                           >
                             <CheckSquare className="h-3.5 w-3.5 mr-1 text-amber-600" />
                             Clôturer
@@ -288,18 +315,18 @@ export default function AffectationsPage() {
         </div>
       </Card>
 
-      {/* Modal Affectation */}
+      {/* Modal Création Affectation (Listes liées et matériel disponible) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-xl rounded-2xl animate-in fade-in-50 zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-xl my-8 rounded-2xl overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Share2 className="h-5 w-5 text-emerald-600" />
-                  Nouvelle Affectation
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Share2 className="h-4 w-4 text-emerald-600" />
+                  Nouvelle attribution de matériel
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Assigner un matériel à un utilisateur ou à un département
+                  Assigner un matériel disponible à un collaborateur ou directement à un service
                 </CardDescription>
               </div>
               <button
@@ -313,34 +340,44 @@ export default function AffectationsPage() {
 
             <form onSubmit={handleCreateAffectation}>
               <CardContent className="space-y-4 pt-4 text-xs">
-                {/* Choix de l'équipement */}
+                {/* Choix de l'équipement (uniquement disponibles) */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="equipement" className="text-slate-700 font-semibold">
-                    Équipement à affecter *
+                  <Label htmlFor="equipement" className="text-slate-700 font-semibold flex items-center justify-between">
+                    <span>Équipement disponible en stock *</span>
+                    <span className="text-[11px] text-emerald-700 font-normal">
+                      {equipementsDispo.length} matériel(s) disponible(s)
+                    </span>
                   </Label>
-                  <select
-                    id="equipement"
-                    value={selectedEqId}
-                    onChange={(e) => setSelectedEqId(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs"
-                  >
-                    {equipements.map((eq) => (
-                      <option key={eq.id} value={eq.id}>
-                        {eq.type} - {eq.marque} {eq.modele} ({eq.numero_serie || "S/N non renseigné"})
-                      </option>
-                    ))}
-                  </select>
+                  {equipementsDispo.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>Aucun équipement disponible en stock. Veuillez d'abord ajouter un matériel ou clôturer une affectation existante.</span>
+                    </div>
+                  ) : (
+                    <select
+                      id="equipement"
+                      value={selectedEqId}
+                      onChange={(e) => setSelectedEqId(e.target.value)}
+                      className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs"
+                      required
+                    >
+                      {equipementsDispo.map((eq) => (
+                        <option key={eq.id} value={eq.id}>
+                          {formatCodeEquipement(eq.code)} · {eq.type} — {eq.marque} {eq.modele} ({eq.numero_serie || "S/N non renseigné"})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Type de cible */}
                 <div className="space-y-1.5">
-                  <Label className="text-slate-700 font-semibold">Type de bénéficiaire *</Label>
+                  <Label className="text-slate-700 font-semibold">Type d'affectation *</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         setCibleType("employe");
-                        if (employes.length > 0) setSelectedCibleId(employes[0].id);
                       }}
                       className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
                         cibleType === "employe"
@@ -369,29 +406,72 @@ export default function AffectationsPage() {
                   </div>
                 </div>
 
-                {/* Sélection de la cible */}
-                <div className="space-y-1.5">
-                  <Label className="text-slate-700 font-semibold">
-                    {cibleType === "employe" ? "Sélectionner l'employé *" : "Sélectionner le service *"}
-                  </Label>
-                  <select
-                    value={selectedCibleId}
-                    onChange={(e) => setSelectedCibleId(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs"
-                  >
-                    {cibleType === "employe"
-                      ? employes.map((emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.prenom} {emp.nom} ({emp.service_nom || "Sans service"})
-                          </option>
-                        ))
-                      : services.map((srv) => (
-                          <option key={srv.id} value={srv.id}>
-                            {srv.nom}
+                {/* Sélection liée (cascading dropdown si employé) */}
+                {cibleType === "employe" ? (
+                  <div className="space-y-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <div className="space-y-1">
+                      <Label className="text-slate-600 text-[11px] font-semibold flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5 text-emerald-600" />
+                        1. Filtrer les collaborateurs par Service :
+                      </Label>
+                      <select
+                        value={filterModalService}
+                        onChange={(e) => setFilterModalService(e.target.value)}
+                        className="w-full h-9 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs"
+                      >
+                        <option value="tous">Tous les services de l'entreprise</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nom}
                           </option>
                         ))}
-                  </select>
-                </div>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-slate-700 text-xs font-semibold flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 text-emerald-600" />
+                        2. Sélectionner le collaborateur bénéficiaire * :
+                      </Label>
+                      {filteredEmployesForModal.length === 0 ? (
+                        <p className="text-[11px] text-slate-500 italic bg-white p-2 rounded-lg border border-slate-200">
+                          Aucun collaborateur trouvé pour ce service.
+                        </p>
+                      ) : (
+                        <select
+                          value={selectedCibleId}
+                          onChange={(e) => setSelectedCibleId(e.target.value)}
+                          className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs font-medium"
+                          required
+                        >
+                          {filteredEmployesForModal.map((emp) => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.prenom} {emp.nom} ({emp.service_nom || "Sans service"})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700 font-semibold">
+                      Sélectionner le service bénéficiaire (matériel partagé) *
+                    </Label>
+                    <select
+                      value={selectedCibleId}
+                      onChange={(e) => setSelectedCibleId(e.target.value)}
+                      className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs text-slate-900 outline-none focus:border-emerald-600 shadow-xs font-medium"
+                      required
+                    >
+                      {services.map((srv) => (
+                        <option key={srv.id} value={srv.id}>
+                          {srv.nom}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Date de début */}
                 <div className="space-y-1.5">
@@ -436,7 +516,7 @@ export default function AffectationsPage() {
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || equipementsDispo.length === 0 || !selectedCibleId}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                 >
                   {isSubmitting ? (

@@ -15,22 +15,26 @@ import {
   Pencil,
   X,
   Save,
+  Building2,
+  CheckCircle2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
-import { Equipement, EtatEquipement } from "@/types";
+import { Equipement, EtatEquipement, Service } from "@/types";
 import { ETATS_EQUIPEMENTS, TYPES_EQUIPEMENTS, formatCodeEquipement } from "@/lib/constants";
 import { toast } from "sonner";
 
 export default function EquipementsPage() {
   const [equipements, setEquipements] = useState<Equipement[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterEtat, setFilterEtat] = useState<string>("tous");
   const [filterType, setFilterType] = useState<string>("tous");
+  const [filterService, setFilterService] = useState<string>("tous");
 
   // Modal d'ajout
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,6 +61,18 @@ export default function EquipementsPage() {
   const [editDescription, setEditDescription] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  const loadServices = async () => {
+    try {
+      const res = await fetch("/api/services");
+      const json = await res.json();
+      if (json.success) {
+        setServices(json.data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const loadEquipements = async () => {
     setIsLoading(true);
     try {
@@ -64,6 +80,7 @@ export default function EquipementsPage() {
       if (search) params.append("search", search);
       if (filterEtat !== "tous") params.append("etat", filterEtat);
       if (filterType !== "tous") params.append("type", filterType);
+      if (filterService !== "tous") params.append("service_id", filterService);
 
       const res = await fetch(`/api/equipements?${params.toString()}`);
       const json = await res.json();
@@ -80,9 +97,13 @@ export default function EquipementsPage() {
   };
 
   useEffect(() => {
+    loadServices();
+  }, []);
+
+  useEffect(() => {
     loadEquipements();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterEtat, filterType]);
+  }, [filterEtat, filterType, filterService]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +158,7 @@ export default function EquipementsPage() {
     setEditModele(eq.modele || "");
     setEditNumSerie(eq.numero_serie || "");
     setEditDateAchat(eq.date_achat ? eq.date_achat.slice(0, 10) : "");
-    setEditEtat(eq.etat);
+    setEditEtat((eq.etat as any) === "reforme" ? "hors_service" : (eq.etat || "en_service"));
     setEditLocalisation(eq.localisation || "");
     setEditDescription(eq.description || "");
     setIsEditModalOpen(true);
@@ -180,9 +201,9 @@ export default function EquipementsPage() {
   };
 
   const handleDeleteEquipement = async (id: string, label: string) => {
-    if (!confirm(`Confirmez-vous l'archivage de l'équipement ${label} ?`)) {
-      return;
-    }
+    const confirmation = window.confirm(`Confirmez-vous l'archivage de l'équipement « ${label} » ?`);
+    if (!confirmation) return;
+
     try {
       const res = await fetch(`/api/equipements/${id}`, { method: "DELETE" });
       const json = await res.json();
@@ -190,7 +211,7 @@ export default function EquipementsPage() {
         toast.success("Équipement archivé.");
         loadEquipements();
       } else {
-        toast.error(json.message || "Erreur lors de l'archivage.");
+        toast.error(json.message || "Impossible d'archiver.");
       }
     } catch {
       toast.error("Erreur serveur.");
@@ -213,14 +234,14 @@ export default function EquipementsPage() {
         </Button>
       </PageHeader>
 
-      {/* Barre de Filtres & Recherche */}
+      {/* Barre de Filtres unifiée & Recherche */}
       <Card className="border border-slate-200 bg-white p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-col lg:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
-              placeholder="Rechercher par type, marque, modèle, numéro de série, localisation..."
+              placeholder="Rechercher par type, marque, modèle, numéro de série, bénéficiaire..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -233,6 +254,23 @@ export default function EquipementsPage() {
               <span>Filtres :</span>
             </div>
 
+            {/* Filtre par Service (Direct ou via employé + non affectés) */}
+            <select
+              value={filterService}
+              onChange={(e) => setFilterService(e.target.value)}
+              className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
+              title="Filtrer les équipements par service ou statut d'affectation"
+            >
+              <option value="tous">Tous les services</option>
+              <option value="non_affectes">📦 Non affectés (En stock)</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nom}
+                </option>
+              ))}
+            </select>
+
+            {/* Filtre par Type */}
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
@@ -246,6 +284,7 @@ export default function EquipementsPage() {
               ))}
             </select>
 
+            {/* Filtre par État */}
             <select
               value={filterEtat}
               onChange={(e) => setFilterEtat(e.target.value)}
@@ -255,7 +294,7 @@ export default function EquipementsPage() {
               <option value="en_service">En service</option>
               <option value="en_panne">En panne</option>
               <option value="en_maintenance">En maintenance</option>
-              <option value="reforme">Réformé</option>
+              <option value="hors_service">Hors service</option>
             </select>
 
             <Button
@@ -273,9 +312,9 @@ export default function EquipementsPage() {
               variant="ghost"
               onClick={loadEquipements}
               className="text-slate-500 hover:text-slate-900"
-              title="Rafraîchir"
+              title="Rafraîchir l'inventaire"
             >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
             </Button>
           </div>
         </form>
@@ -301,60 +340,60 @@ export default function EquipementsPage() {
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-500">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
-                    Chargement des équipements depuis MySQL...
+                    Chargement du parc informatique...
                   </td>
                 </tr>
               ) : equipements.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-500">
                     <FileQuestion className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                    Aucun équipement ne correspond aux filtres appliqués.
+                    Aucun équipement ne correspond aux critères sélectionnés.
                   </td>
                 </tr>
               ) : (
                 equipements.map((eq) => {
                   const etatInfo = ETATS_EQUIPEMENTS[eq.etat] || {
-                    label: eq.etat,
+                    label: eq.etat === ("reforme" as any) ? "Hors service" : eq.etat,
                     badgeClass: "bg-slate-100 text-slate-600 border-slate-200",
                     dotClass: "bg-slate-400",
                   };
 
                   return (
                     <tr key={eq.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-emerald-700 whitespace-nowrap">
+                      <td className="py-3 px-4 font-mono font-semibold text-emerald-700">
                         {formatCodeEquipement(eq.code)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900">{eq.type}</div>
                         <div className="text-xs text-slate-500">
-                          {eq.marque} {eq.modele}
+                          {eq.marque} {eq.modele ? `· ${eq.modele}` : ""}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-mono text-xs text-slate-500">
+                      <td className="py-3 px-4 font-mono text-xs text-slate-700">
                         {eq.numero_serie || "—"}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-3 px-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${etatInfo.badgeClass}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${etatInfo.dotClass}`} />
                           {etatInfo.label}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {eq.localisation || "Non définie"}
+                      <td className="py-3 px-4 text-xs text-slate-600">
+                        {eq.localisation || "—"}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 text-xs">
                         {eq.affectation_actuelle ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+                          <div className="font-medium text-slate-900">
                             {eq.affectation_actuelle}
-                          </span>
+                          </div>
                         ) : (
-                          <span className="text-slate-400 text-xs italic">En stock</span>
+                          <span className="text-slate-400 text-xs italic">En stock (non affecté)</span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Link href={`/dashboard/equipements/${eq.id}`}>
-                            <Button variant="ghost" size="xs" className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50">
+                            <Button variant="ghost" size="xs" className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50" title="Consulter la fiche détaillée et l'historique">
                               <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" />
                               Fiche
                             </Button>
@@ -364,7 +403,7 @@ export default function EquipementsPage() {
                             size="xs"
                             onClick={() => openEditModal(eq)}
                             className="text-slate-600 hover:text-amber-700 hover:bg-amber-50"
-                            title="Modifier rapidement"
+                            title="Modifier rapidement les caractéristiques"
                           >
                             <Pencil className="h-3.5 w-3.5 mr-1 text-amber-600" />
                             Modifier
@@ -374,7 +413,7 @@ export default function EquipementsPage() {
                             size="xs"
                             onClick={() => handleDeleteEquipement(eq.id, `${eq.type} (${eq.numero_serie || "S/N inconnu"})`)}
                             className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                            title="Archiver l'équipement"
+                            title="Archiver cet équipement"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -432,7 +471,7 @@ export default function EquipementsPage() {
                     <option value="en_service">En service</option>
                     <option value="en_panne">En panne</option>
                     <option value="en_maintenance">En maintenance</option>
-                    <option value="reforme">Réformé</option>
+                    <option value="hors_service">Hors service</option>
                   </select>
                 </div>
 
@@ -475,26 +514,26 @@ export default function EquipementsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Localisation</Label>
+                <Label className="text-xs font-semibold text-slate-700">Localisation géographique</Label>
                 <Input
-                  placeholder="ex: Bureau Informatique, Couloir R+1, Direction Générale..."
+                  placeholder="ex: Bureau Informatique, RDC Salle Serveur, Bureau Comptabilité..."
                   value={formLocalisation}
                   onChange={(e) => setFormLocalisation(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Description / Configuration</Label>
+                <Label className="text-xs font-semibold text-slate-700">Observations / Configuration</Label>
                 <textarea
-                  rows={3}
-                  placeholder="Processeur, RAM, stockage, particularités..."
+                  rows={2}
+                  placeholder="Spécifications techniques, processeur, RAM..."
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
+                  className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <Button
                   type="button"
                   variant="outline"
@@ -506,9 +545,16 @@ export default function EquipementsPage() {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
                 >
-                  {isSubmitting ? "Enregistrement..." : "Ajouter l'équipement"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      Ajout...
+                    </>
+                  ) : (
+                    "Ajouter au parc"
+                  )}
                 </Button>
               </div>
             </form>
@@ -559,7 +605,7 @@ export default function EquipementsPage() {
                     <option value="en_service">En service</option>
                     <option value="en_panne">En panne</option>
                     <option value="en_maintenance">En maintenance</option>
-                    <option value="reforme">Réformé</option>
+                    <option value="hors_service">Hors service</option>
                   </select>
                 </div>
 
@@ -609,14 +655,14 @@ export default function EquipementsPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-700">Description</Label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
+                  className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <Button
                   type="button"
                   variant="outline"
@@ -628,18 +674,15 @@ export default function EquipementsPage() {
                 <Button
                   type="submit"
                   disabled={isSavingEdit}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
                 >
                   {isSavingEdit ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Enregistrement...
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      Mise à jour...
                     </>
                   ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      Enregistrer
-                    </>
+                    "Enregistrer"
                   )}
                 </Button>
               </div>

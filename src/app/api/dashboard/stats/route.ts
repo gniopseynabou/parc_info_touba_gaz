@@ -3,14 +3,13 @@ import pool from "@/lib/db";
 import { RowDataPacket } from "mysql2";
 import { requireAuth } from "@/lib/auth";
 
-
 const STATS_QUERY = `
   SELECT
     (SELECT COUNT(*) FROM equipements) as totalEquipements,
     (SELECT SUM(CASE WHEN etat = 'en_service' AND archive = 0 THEN 1 ELSE 0 END) FROM equipements) as equipementsEnService,
     (SELECT SUM(CASE WHEN etat = 'en_panne' AND archive = 0 THEN 1 ELSE 0 END) FROM equipements) as equipementsEnPanne,
     (SELECT SUM(CASE WHEN etat = 'en_maintenance' AND archive = 0 THEN 1 ELSE 0 END) FROM equipements) as equipementsEnMaintenance,
-    (SELECT SUM(CASE WHEN etat = 'reforme' OR archive = 1 THEN 1 ELSE 0 END) FROM equipements) as equipementsReformes,
+    (SELECT SUM(CASE WHEN etat = 'hors_service' OR etat = 'reforme' OR archive = 1 THEN 1 ELSE 0 END) FROM equipements) as equipementsHorsService,
     (SELECT COUNT(*) FROM tickets) as totalTickets,
     (SELECT SUM(CASE WHEN statut = 'nouveau' THEN 1 ELSE 0 END) FROM tickets) as ticketsNouveaux,
     (SELECT SUM(CASE WHEN statut = 'en_cours' THEN 1 ELSE 0 END) FROM tickets) as ticketsEnCours,
@@ -31,12 +30,14 @@ export async function GET(req: Request) {
 
     const [[row]] = await pool.query<RowDataPacket[]>(STATS_QUERY);
 
+    const horsServiceCount = Number(row?.equipementsHorsService ?? 0);
     const stats = {
       totalEquipements: Number(row?.totalEquipements ?? 0),
       equipementsEnService: Number(row?.equipementsEnService ?? 0),
       equipementsEnPanne: Number(row?.equipementsEnPanne ?? 0),
       equipementsEnMaintenance: Number(row?.equipementsEnMaintenance ?? 0),
-      equipementsReformes: Number(row?.equipementsReformes ?? 0),
+      equipementsHorsService: horsServiceCount,
+      equipementsReformes: horsServiceCount,
       totalTickets: Number(row?.totalTickets ?? 0),
       ticketsNouveaux: Number(row?.ticketsNouveaux ?? 0),
       ticketsEnCours: Number(row?.ticketsEnCours ?? 0),

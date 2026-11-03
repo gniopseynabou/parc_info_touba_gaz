@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Users,
   Search,
@@ -17,6 +18,11 @@ import {
   UserCheck,
   Edit2,
   UserX,
+  Laptop,
+  Eye,
+  Share2,
+  Calendar,
+  CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { Employe, Service } from "@/types";
+import { formatCodeEquipement, formatDateFr, ETATS_EQUIPEMENTS } from "@/lib/constants";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -63,6 +70,10 @@ export default function EmployesPage() {
   const [editNewPassword, setEditNewPassword] = useState("");
   const [isEditingSubmitting, setIsEditingSubmitting] = useState(false);
 
+  // Modal Détail Équipements & Fiche Collaborateur (Item 5)
+  const [detailEmploye, setDetailEmploye] = useState<any | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -98,6 +109,24 @@ export default function EmployesPage() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     loadData();
+  };
+
+  const openEmployeDetail = async (emp: EmployeWithRole) => {
+    setIsLoadingDetail(true);
+    setDetailEmploye(null);
+    try {
+      const res = await fetch(`/api/employe/me?employe_id=${emp.id}`);
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setDetailEmploye(json.data);
+      } else {
+        toast.error("Impossible de charger les équipements de cet employé.");
+      }
+    } catch {
+      toast.error("Erreur serveur.");
+    } finally {
+      setIsLoadingDetail(false);
+    }
   };
 
   const handleCreateEmploye = async (e: React.FormEvent) => {
@@ -224,7 +253,7 @@ export default function EmployesPage() {
 
       <PageHeader
         title="Répertoire des employés"
-        description="Personnel, services de rattachement, rôles et comptes d’accès Touba Gaz."
+        description="Personnel, services de rattachement, rôles et dotations du matériel Touba Gaz."
         icon={Users}
       >
         <Button
@@ -236,7 +265,7 @@ export default function EmployesPage() {
         </Button>
       </PageHeader>
 
-      {/* Barre de filtres */}
+      {/* Barre de filtres unifiée */}
       <Card className="border border-slate-200 bg-white p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -379,6 +408,17 @@ export default function EmployesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => openEmployeDetail(emp)}
+                          className="h-8 px-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 gap-1 text-xs"
+                          title="Consulter les équipements individuels et communs"
+                        >
+                          <Laptop className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="hidden sm:inline">Dotation</span>
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleOpenEdit(emp)}
                           className="h-8 px-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                           title="Modifier les coordonnées et accès"
@@ -404,6 +444,130 @@ export default function EmployesPage() {
           </table>
         </div>
       </Card>
+
+      {/* Modal Détail Collaborateur & Équipements rattachés (Item 5) */}
+      {(isLoadingDetail || detailEmploye) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl my-8 overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/70">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Laptop className="h-5 w-5 text-emerald-600" />
+                  Fiche de dotation : {detailEmploye?.employe?.prenom} {detailEmploye?.employe?.nom}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {detailEmploye?.employe?.service_nom || "Sans rattachement direct"} · Réf : {detailEmploye?.employe?.id}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailEmploye(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {isLoadingDetail || !detailEmploye ? (
+              <div className="p-12 text-center text-slate-500">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                Chargement des équipements...
+              </div>
+            ) : (
+              <div className="p-6 space-y-5 text-xs max-h-[75vh] overflow-y-auto">
+                {/* 1. Équipements individuels */}
+                <div className="space-y-2">
+                  <h3 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                    <span>1. Équipements individuels en dotation ({detailEmploye.equipements_personnels?.length || 0})</span>
+                  </h3>
+                  {(!detailEmploye.equipements_personnels || detailEmploye.equipements_personnels.length === 0) ? (
+                    <p className="text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      Aucun matériel individuel directement affecté à cet employé.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {detailEmploye.equipements_personnels.map((eq: any) => {
+                        const st = ETATS_EQUIPEMENTS[eq.etat as keyof typeof ETATS_EQUIPEMENTS] || { label: eq.etat, badgeClass: "" };
+                        return (
+                          <div key={eq.id} className="p-3 bg-white flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-emerald-700">
+                                  {formatCodeEquipement(eq.code)}
+                                </span>
+                                <span className="font-semibold text-slate-900">{eq.type}</span>
+                                <span className="text-slate-500">· {eq.marque} {eq.modele}</span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
+                                S/N: {eq.numero_serie || "Non renseigné"} · Affecté le {formatDateFr(eq.affectation_date_debut)}
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${st.badgeClass}`}>
+                              {st.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Équipements communs du service */}
+                <div className="space-y-2">
+                  <h3 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                    <span>2. Équipements partagés du service {detailEmploye.employe?.service_nom || ""} ({detailEmploye.equipements_service?.length || 0})</span>
+                  </h3>
+                  {(!detailEmploye.equipements_service || detailEmploye.equipements_service.length === 0) ? (
+                    <p className="text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      Aucun matériel partagé affecté au service de cet employé.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {detailEmploye.equipements_service.map((eq: any) => {
+                        const st = ETATS_EQUIPEMENTS[eq.etat as keyof typeof ETATS_EQUIPEMENTS] || { label: eq.etat, badgeClass: "" };
+                        return (
+                          <div key={eq.id} className="p-3 bg-white flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-blue-700">
+                                  {formatCodeEquipement(eq.code)}
+                                </span>
+                                <span className="font-semibold text-slate-900">{eq.type}</span>
+                                <span className="text-slate-500">· {eq.marque} {eq.modele}</span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
+                                [Partagé Service] S/N: {eq.numero_serie || "Non renseigné"}
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${st.badgeClass}`}>
+                              {st.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <Link href={`/dashboard/affectations`}>
+                    <Button size="sm" variant="outline" className="border-slate-200 text-slate-700 gap-1.5 text-xs">
+                      <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                      Attribuer un nouveau matériel
+                    </Button>
+                  </Link>
+                  <Button
+                    size="sm"
+                    onClick={() => setDetailEmploye(null)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                  >
+                    Fermer
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL MODIFICATION EMPLOYÉ */}
       {editingEmp && (

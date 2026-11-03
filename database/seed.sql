@@ -31,7 +31,7 @@ VALUES
   ('eq-007', 'Onduleur', 'APC', 'Smart-UPS 1500VA', 'SN-APC-UPS-774', '2022-01-20', 'en_service', 'Salle Serveur', 'Onduleur de protection serveur central', 0),
   ('eq-008', 'Ordinateur portable', 'Dell', 'Vostro 3510', 'SN-DEL-VOST-33', '2023-09-05', 'en_panne', 'Atelier Support IT', 'Écran noir suite surtension, diagnostic en cours', 0),
   ('eq-009', 'Écran / Moniteur', 'Dell', 'P2419H 24 pouces', 'SN-DEL-MON-662', '2023-03-15', 'en_service', 'Ressources Humaines', 'Écran externe HDMI/DP', 0),
-  ('eq-010', 'Ordinateur portable', 'HP', 'ProBook 450 G3', 'SN-HP-OLD-001', '2018-06-10', 'reforme', 'Dépôt archives IT', 'Carte mère HS, matériel amorti et réformé', 0)
+  ('eq-010', 'Ordinateur portable', 'HP', 'ProBook 450 G3', 'SN-HP-OLD-001', '2018-06-10', 'hors_service', 'Dépôt archives IT', 'Carte mère HS, matériel amorti et hors service', 0)
 ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `etat` = VALUES(`etat`);
 
 -- Affectations (Actives)

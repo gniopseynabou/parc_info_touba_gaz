@@ -4,7 +4,7 @@
 
 export type RoleUtilisateur = "admin" | "employe";
 
-export type EtatEquipement = "en_service" | "en_panne" | "en_maintenance" | "reforme";
+export type EtatEquipement = "en_service" | "en_panne" | "en_maintenance" | "hors_service";
 
 export type StatutTicket = "nouveau" | "en_cours" | "en_attente" | "resolu" | "cloture";
 
@@ -50,6 +50,10 @@ export interface Equipement {
   description?: string | null;
   archive: boolean;
   affectation_actuelle?: string | null;
+  service_id?: string | null;
+  service_nom?: string | null;
+  employe_id?: string | null;
+  employe_nom?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -80,6 +84,7 @@ export interface Ticket {
   description: string;
   categorie: string;
   priorite: PrioriteTicket;
+  priorite_explication?: string | null;
   canal: CanalTicket;
   equipement_id?: string | null;
   equipement_label?: string | null;
@@ -117,7 +122,8 @@ export interface DashboardStats {
   equipementsEnService: number;
   equipementsEnPanne: number;
   equipementsEnMaintenance: number;
-  equipementsReformes: number;
+  equipementsHorsService: number;
+  equipementsReformes?: number;
   totalTickets: number;
   ticketsNouveaux: number;
   ticketsEnCours: number;

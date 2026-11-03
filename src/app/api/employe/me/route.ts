@@ -3,7 +3,6 @@ import pool from "@/lib/db";
 import { RowDataPacket } from "mysql2";
 import { requireAuth } from "@/lib/auth";
 
-
 export async function GET(req: Request) {
   try {
     const authResult = await requireAuth(req);
@@ -26,7 +25,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: "Identifiant manquant." }, { status: 400 });
     }
 
-    // Récupérer l'employé que ce soit par son ID employe (emp-...) ou son ID utilisateur (usr-...)
+    // Récupérer l'employé
     const [empRows] = await pool.query<RowDataPacket[]>(
       `SELECT e.*, s.nom as service_nom 
        FROM employes e 
@@ -41,10 +40,13 @@ export async function GET(req: Request) {
 
     const employe = empRows[0];
     const realEmployeId = employe.id;
+    const serviceId = employe.service_id;
 
-    // Récupérer les équipements actuellement affectés à cet employé
-    const [equipements] = await pool.query<RowDataPacket[]>(
-      `SELECT e.*, a.date_debut as affectation_date_debut, a.commentaire as affectation_motif
+    // 1. Équipements personnels affectés directement à l'employé
+    const [equipementsPerso] = await pool.query<RowDataPacket[]>(
+      `SELECT e.*, a.date_debut as affectation_date_debut, a.commentaire as affectation_motif,
+              'personnel' as type_affectation,
+              NULL as service_nom
        FROM affectations a
        JOIN equipements e ON e.id = a.equipement_id
        WHERE a.employe_id = ? AND a.date_fin IS NULL AND e.archive = 0
@@ -52,7 +54,35 @@ export async function GET(req: Request) {
       [realEmployeId]
     );
 
-    // Récupérer les tickets d'assistance créés par cet employé
+    // 2. Équipements partagés affectés au service de l'employé
+    let equipementsService: RowDataPacket[] = [];
+    if (serviceId) {
+      const [serviceEqRows] = await pool.query<RowDataPacket[]>(
+        `SELECT e.*, a.date_debut as affectation_date_debut, a.commentaire as affectation_motif,
+                'service_partage' as type_affectation,
+                s.nom as service_nom
+         FROM affectations a
+         JOIN equipements e ON e.id = a.equipement_id
+         LEFT JOIN services s ON s.id = a.service_id
+         WHERE a.service_id = ? AND a.date_fin IS NULL AND e.archive = 0
+         ORDER BY a.date_debut DESC`,
+        [serviceId]
+      );
+      equipementsService = serviceEqRows;
+    }
+
+    // Normaliser l'état reforme vers hors_service
+    const sanitizeEq = (list: RowDataPacket[]) =>
+      list.map((eq) => ({
+        ...eq,
+        etat: eq.etat === "reforme" ? "hors_service" : eq.etat,
+      }));
+
+    const cleanPerso = sanitizeEq(equipementsPerso);
+    const cleanService = sanitizeEq(equipementsService);
+    const allEquipements = [...cleanPerso, ...cleanService];
+
+    // 3. Tickets d'assistance créés par cet employé
     const [tickets] = await pool.query<RowDataPacket[]>(
       `SELECT t.*, 
               CONCAT(COALESCE(e.marque, ''), ' ', COALESCE(e.modele, ''), ' (', COALESCE(e.type, ''), ')') as equipement_label,
@@ -70,7 +100,9 @@ export async function GET(req: Request) {
       success: true,
       data: {
         employe,
-        equipements,
+        equipements: allEquipements,
+        equipements_personnels: cleanPerso,
+        equipements_service: cleanService,
         tickets,
       },
     });

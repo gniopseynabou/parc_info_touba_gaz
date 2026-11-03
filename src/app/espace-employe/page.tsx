@@ -28,6 +28,8 @@ import {
   Check,
   Tag,
   Hash,
+  Sparkles,
+  Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,7 +57,9 @@ export default function EspaceEmployePage() {
   const router = useRouter();
   const [session, setSession] = useState<EmployeSession | null>(null);
   const [employeData, setEmployeData] = useState<any>(null);
-  const [equipements, setEquipements] = useState<Equipement[]>([]);
+  const [equipements, setEquipements] = useState<any[]>([]);
+  const [equipementsPerso, setEquipementsPerso] = useState<any[]>([]);
+  const [equipementsService, setEquipementsService] = useState<any[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"equipements" | "tickets" | "support">("equipements");
@@ -66,7 +70,6 @@ export default function EspaceEmployePage() {
   const [formDescription, setFormDescription] = useState("");
   const [formCategorie, setFormCategorie] = useState(CATEGORIES_TICKETS[0]);
   const [formEquipementId, setFormEquipementId] = useState("");
-  const [formPriorite, setFormPriorite] = useState<"basse" | "normale" | "haute">("normale");
 
   const loadEmployeData = async (empId: string) => {
     setIsLoading(true);
@@ -75,9 +78,11 @@ export default function EspaceEmployePage() {
       const json = await res.json();
       if (json.success) {
         setEmployeData(json.data.employe);
-        setEquipements(json.data.equipements);
-        setTickets(json.data.tickets);
-        if (json.data.equipements.length > 0 && !formEquipementId) {
+        setEquipements(json.data.equipements || []);
+        setEquipementsPerso(json.data.equipements_personnels || []);
+        setEquipementsService(json.data.equipements_service || []);
+        setTickets(json.data.tickets || []);
+        if (json.data.equipements && json.data.equipements.length > 0 && !formEquipementId) {
           setFormEquipementId(json.data.equipements[0].id);
         }
       } else {
@@ -151,7 +156,6 @@ export default function EspaceEmployePage() {
           demandeur_id: empId,
           description: formDescription,
           categorie: formCategorie,
-          priorite: formPriorite,
           canal: "application",
           equipement_id: formEquipementId || null,
         }),
@@ -159,7 +163,10 @@ export default function EspaceEmployePage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success("Votre demande d'assistance a été transmise aux techniciens IT !");
+        const explicationMsg = json.priorite_explication
+          ? ` (${json.priorite_explication})`
+          : "";
+        toast.success(`Votre demande d'assistance a été transmise à l'équipe IT !${explicationMsg}`);
         setIsModalOpen(false);
         setFormDescription("");
         setActiveTab("tickets");
@@ -355,7 +362,7 @@ export default function EspaceEmployePage() {
 
         {/* CONTENU DE L'ONGLET 1 : MES ÉQUIPEMENTS */}
         {activeTab === "equipements" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {isLoading ? (
               <div className="py-16 text-center text-slate-500">
                 <Loader2 className="h-7 w-7 animate-spin mx-auto text-emerald-600 mb-2" />
@@ -382,85 +389,188 @@ export default function EspaceEmployePage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {equipements.map((eq: any) => {
-                  const Icon = getEquipmentIcon(eq.type);
+              <div className="space-y-6">
+                {/* Section 1 : Équipements individuels */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                      <Laptop className="h-4 w-4 text-emerald-600" />
+                      Équipements personnels en dotation ({equipementsPerso.length})
+                    </h3>
+                  </div>
+                  {equipementsPerso.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic bg-white p-4 rounded-xl border border-slate-200">
+                      Aucun équipement individuel direct. Vous bénéficiez des matériels partagés de votre service ci-dessous.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {equipementsPerso.map((eq: any) => {
+                        const Icon = getEquipmentIcon(eq.type);
+                        return (
+                          <div
+                            key={eq.id}
+                            className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-emerald-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50 flex items-center justify-center">
+                                    <Icon className="h-5 w-5" />
+                                  </div>
+                                  <div>
+                                    <span className="font-mono text-xs font-bold text-emerald-700 block">
+                                      {formatCodeEquipement(eq.code)}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      {eq.type}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  Personnel
+                                </span>
+                              </div>
 
-                  return (
-                    <div
-                      key={eq.id}
-                      className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-emerald-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
-                    >
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50 flex items-center justify-center">
-                              <Icon className="h-5 w-5" />
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                                  {eq.marque} {eq.modele}
+                                </h4>
+                                {eq.description && (
+                                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                    {eq.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5 pt-3 border-t border-slate-100 text-xs">
+                                <div className="flex items-center justify-between text-slate-500">
+                                  <span className="flex items-center gap-1.5">
+                                    <Hash className="h-3 w-3 text-slate-400" />
+                                    N° de Série :
+                                  </span>
+                                  <span className="font-mono text-slate-800 font-semibold">
+                                    {eq.numero_serie || "Non renseigné"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-500">
+                                  <span className="flex items-center gap-1.5">
+                                    <Calendar className="h-3 w-3 text-slate-400" />
+                                    Attribué le :
+                                  </span>
+                                  <span className="text-slate-800 font-medium">
+                                    {formatDateFr(eq.affectation_date_debut)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-mono text-xs font-bold text-emerald-700 block">
-                                {formatCodeEquipement(eq.code)}
-                              </span>
-                              <span className="text-[11px] text-slate-500 font-medium">
-                                {eq.type}
-                              </span>
+
+                            <div className="pt-4 mt-3">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenTicketForEquipement(eq.id)}
+                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors gap-1.5 font-medium"
+                              >
+                                <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                Signaler un souci sur ce matériel
+                              </Button>
                             </div>
                           </div>
-
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            En dotation
-                          </span>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
-                            {eq.marque} {eq.modele}
-                          </h4>
-                          {eq.description && (
-                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                              {eq.description}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="space-y-1.5 pt-3 border-t border-slate-100 text-xs">
-                          <div className="flex items-center justify-between text-slate-500">
-                            <span className="flex items-center gap-1.5">
-                              <Hash className="h-3 w-3 text-slate-400" />
-                              N° de Série :
-                            </span>
-                            <span className="font-mono text-slate-800 font-semibold">
-                              {eq.numero_serie || "Non renseigné"}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between text-slate-500">
-                            <span className="flex items-center gap-1.5">
-                              <Calendar className="h-3 w-3 text-slate-400" />
-                              Attribué le :
-                            </span>
-                            <span className="text-slate-800 font-medium">
-                              {formatDateFr(eq.affectation_date_debut)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-4 mt-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenTicketForEquipement(eq.id)}
-                          className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors gap-1.5 font-medium"
-                        >
-                          <AlertTriangle className="h-3 w-3 text-amber-600" />
-                          Signaler un souci sur ce matériel
-                        </Button>
-                      </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+
+                {/* Section 2 : Équipements partagés du service */}
+                {equipementsService.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-blue-600" />
+                        Matériels communs du service {employeData?.service_nom || ""} ({equipementsService.length})
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {equipementsService.map((eq: any) => {
+                        const Icon = getEquipmentIcon(eq.type);
+                        return (
+                          <div
+                            key={eq.id}
+                            className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-blue-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-200/50 flex items-center justify-center">
+                                    <Icon className="h-5 w-5" />
+                                  </div>
+                                  <div>
+                                    <span className="font-mono text-xs font-bold text-blue-700 block">
+                                      {formatCodeEquipement(eq.code)}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      {eq.type}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                  Partagé
+                                </span>
+                              </div>
+
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                                  {eq.marque} {eq.modele}
+                                </h4>
+                                {eq.description && (
+                                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                    {eq.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5 pt-3 border-t border-slate-100 text-xs">
+                                <div className="flex items-center justify-between text-slate-500">
+                                  <span className="flex items-center gap-1.5">
+                                    <Hash className="h-3 w-3 text-slate-400" />
+                                    N° de Série :
+                                  </span>
+                                  <span className="font-mono text-slate-800 font-semibold">
+                                    {eq.numero_serie || "Non renseigné"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-500">
+                                  <span className="flex items-center gap-1.5">
+                                    <Building2 className="h-3 w-3 text-slate-400" />
+                                    Département :
+                                  </span>
+                                  <span className="text-slate-800 font-medium">
+                                    {employeData?.service_nom || "Service commun"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-4 mt-3">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenTicketForEquipement(eq.id)}
+                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-blue-300 hover:bg-blue-50/30 transition-colors gap-1.5 font-medium"
+                              >
+                                <AlertTriangle className="h-3 w-3 text-amber-600" />
+                                Signaler un dysfonctionnement
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -545,7 +655,10 @@ export default function EspaceEmployePage() {
                         </div>
 
                         <div className="flex items-center gap-2 self-start sm:self-auto">
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${prioriteInfo.badgeClass}`}>
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${prioriteInfo.badgeClass}`}
+                            title={t.priorite_explication || `Priorité ${prioriteInfo.label}`}
+                          >
                             {prioriteInfo.label}
                           </span>
                           <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${statutInfo.badgeClass}`}>
@@ -557,6 +670,13 @@ export default function EspaceEmployePage() {
                       <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-medium">
                         {t.description}
                       </p>
+
+                      {t.priorite_explication && (
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1.5 italic">
+                          <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
+                          <span>{t.priorite_explication}</span>
+                        </p>
+                      )}
 
                       {/* Rapport de l'intervention technique si résolu */}
                       {t.intervention_actions && (
@@ -644,7 +764,7 @@ export default function EspaceEmployePage() {
 
       </main>
 
-      {/* Modal Création Ticket */}
+      {/* Modal Création Ticket Collaborateur */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
           <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-xl my-8 rounded-2xl overflow-hidden">
@@ -669,6 +789,17 @@ export default function EspaceEmployePage() {
 
             <form onSubmit={handleCreateTicket}>
               <CardContent className="space-y-4 pt-4 text-xs">
+                {/* Information employé connecté */}
+                <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/60 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-emerald-900 font-semibold">
+                    <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                    Demandeur : {employeData?.prenom} {employeData?.nom}
+                  </div>
+                  <span className="text-emerald-700 text-[11px] font-medium">
+                    {employeData?.service_nom || "Touba Gaz"}
+                  </span>
+                </div>
+
                 {/* Choix de la catégorie */}
                 <div className="space-y-1.5">
                   <Label htmlFor="cat" className="text-slate-700 font-semibold">
@@ -688,120 +819,102 @@ export default function EspaceEmployePage() {
                   </select>
                 </div>
 
-                {/* Équipement concerné */}
+                {/* Équipement concerné (filtré au périmètre de l'employé) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="eq" className="text-slate-700 font-semibold">
                     Équipement concerné
                   </Label>
-                  <select
-                    id="eq"
-                    value={formEquipementId}
-                    onChange={(e) => setFormEquipementId(e.target.value)}
-                    className="w-full h-10 rounded-xl bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-900 focus:border-emerald-600 outline-none shadow-xs"
-                  >
-                    <option value="">Problème général / Non lié à un matériel précis</option>
-                    {equipements.map((eq: any) => (
-                      <option key={eq.id} value={eq.id}>
-                        {eq.type} — {eq.marque} {eq.modele} ({eq.numero_serie || "S/N inconnu"})
-                      </option>
-                    ))}
-                  </select>
+                  {equipements.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-2">
+                      <Info className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>Aucun matériel actuellement affecté à votre nom ou à votre service. Votre demande sera enregistrée en tant que demande générale.</span>
+                    </div>
+                  ) : (
+                    <select
+                      id="eq"
+                      value={formEquipementId}
+                      onChange={(e) => setFormEquipementId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-900 focus:border-emerald-600 outline-none shadow-xs"
+                    >
+                      <option value="">Problème général / Non lié à un matériel précis</option>
+                      {equipementsPerso.length > 0 && (
+                        <optgroup label="Mes équipements personnels">
+                          {equipementsPerso.map((eq: any) => (
+                            <option key={eq.id} value={eq.id}>
+                              {eq.type} — {eq.marque} {eq.modele} ({eq.numero_serie || "S/N inconnu"})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {equipementsService.length > 0 && (
+                        <optgroup label={`Équipements communs du service ${employeData?.service_nom || ""}`}>
+                          {equipementsService.map((eq: any) => (
+                            <option key={eq.id} value={eq.id}>
+                              [Partagé] {eq.type} — {eq.marque} {eq.modele} ({eq.numero_serie || "S/N inconnu"})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  )}
                 </div>
 
-                {/* Degré d'urgence */}
-                <div className="space-y-1.5">
-                  <Label className="text-slate-700 font-semibold block">
-                    Degré d'urgence
-                  </Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFormPriorite("basse")}
-                      className={`py-2 px-2.5 rounded-lg border text-xs font-semibold transition-all ${
-                        formPriorite === "basse"
-                          ? "bg-slate-100 text-slate-900 border-slate-300"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      Basse
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormPriorite("normale")}
-                      className={`py-2 px-2.5 rounded-lg border text-xs font-semibold transition-all ${
-                        formPriorite === "normale"
-                          ? "bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-300/50"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      Normale
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormPriorite("haute")}
-                      className={`py-2 px-2.5 rounded-lg border text-xs font-semibold transition-all ${
-                        formPriorite === "haute"
-                          ? "bg-amber-50 text-amber-800 border-amber-300 ring-1 ring-amber-300/50"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      Urgente
-                    </button>
+                {/* Explication du calcul automatique de priorité (Item 4) */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-start gap-2.5">
+                  <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-slate-900 block text-xs">Priorité déterminée automatiquement</span>
+                    <span className="text-[11px] text-slate-500 leading-relaxed block mt-0.5">
+                      Le degré d'urgence (Basse, Normale, Haute, Critique) est calculé par le système selon la nature de la panne et la criticité du matériel.
+                    </span>
                   </div>
                 </div>
 
                 {/* Description détaillée */}
                 <div className="space-y-1.5">
                   <Label htmlFor="desc" className="text-slate-700 font-semibold">
-                    Description du problème *
+                    Description du problème rencontré *
                   </Label>
                   <textarea
                     id="desc"
                     required
                     rows={4}
-                    placeholder="Détaillez le comportement observé : que faisiez-vous ? Quels sont les messages affichés à l'écran ?"
+                    placeholder="Précisez les circonstances de la panne, les messages d'erreur affichés et le niveau d'impact sur votre travail..."
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full rounded-xl bg-white border border-slate-200 p-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs leading-relaxed"
+                    className="w-full rounded-xl bg-white border border-slate-200 p-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                   />
                 </div>
-              </CardContent>
 
-              <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-slate-600 hover:text-slate-900"
-                >
-                  Annuler
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={isSubmitting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-9 px-4 gap-1.5 shadow-xs"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                      Transmission...
-                    </>
-                  ) : (
-                    "Transmettre au support IT"
-                  )}
-                </Button>
-              </div>
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsModalOpen(false)}
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                        Transmission...
+                      </>
+                    ) : (
+                      "Envoyer le signalement"
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
             </form>
           </Card>
         </div>
       )}
-
-      {/* Footer Institutionnel Discret */}
-      <footer className="border-t border-[#E2E8F0] bg-white px-4 py-4 text-center text-xs text-slate-500 mt-auto">
-        © 2026 Touba Gaz SA · Direction des Systèmes d'Information · Portail Intranet d'Assistance
-      </footer>
     </div>
   );
 }

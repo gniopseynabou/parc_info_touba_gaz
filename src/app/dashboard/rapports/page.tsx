@@ -520,7 +520,10 @@ export default function RapportsPage() {
                                 </p>
                               </td>
                               <td className="p-2.5 whitespace-nowrap">
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${prioriteConf.badgeClass} print:border-black print:text-black`}>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${prioriteConf.badgeClass} print:border-black print:text-black`}
+                                  title={t.priorite_explication || `Priorité ${prioriteConf.label}`}
+                                >
                                   {prioriteConf.label}
                                 </span>
                               </td>

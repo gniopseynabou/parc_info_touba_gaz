@@ -16,6 +16,7 @@ import {
   PhoneCall,
   Mail,
   UserCheck,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function TicketsPage() {
   const [formDemandeurId, setFormDemandeurId] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCategorie, setFormCategorie] = useState(CATEGORIES_TICKETS[0]);
-  const [formPriorite, setFormPriorite] = useState<PrioriteTicket>("normale");
+  const [formPriorite, setFormPriorite] = useState<string>("auto");
   const [formCanal, setFormCanal] = useState<CanalTicket>("application");
   const [formEquipementId, setFormEquipementId] = useState("");
 
@@ -111,25 +112,34 @@ export default function TicketsPage() {
 
     setIsSubmitting(true);
     try {
+      const payload: any = {
+        demandeur_id: formDemandeurId,
+        description: formDescription,
+        categorie: formCategorie,
+        canal: formCanal,
+        equipement_id: formEquipementId || null,
+      };
+
+      if (formPriorite !== "auto") {
+        payload.priorite = formPriorite;
+      }
+
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          demandeur_id: formDemandeurId,
-          description: formDescription,
-          categorie: formCategorie,
-          priorite: formPriorite,
-          canal: formCanal,
-          equipement_id: formEquipementId || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
       if (res.ok && json.success) {
-        toast.success(`Ticket ${formatNumeroTicket(json.data.numero)} créé avec succès.`);
+        const msg = json.priorite_explication
+          ? `Ticket créé avec succès (${json.priorite_explication})`
+          : "Ticket créé avec succès.";
+        toast.success(msg);
         setIsModalOpen(false);
         setFormDescription("");
         setFormEquipementId("");
+        setFormPriorite("auto");
         loadData();
       } else {
         toast.error(json.message || "Erreur lors de la création du ticket.");
@@ -240,6 +250,9 @@ export default function TicketsPage() {
     }
   };
 
+  // Trouver l'employé sélectionné dans le formulaire d'ajout
+  const selectedEmp = employes.find((e) => e.id === formDemandeurId);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -271,12 +284,12 @@ export default function TicketsPage() {
         <span className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>
-            <strong>Règle de gestion (RG07 / CT08) :</strong> Un ticket est rattaché à une seule intervention au maximum. La résolution technique est formellement distinguée de la clôture administrative (RG09).
+            <strong>Cycle ITSM Touba Gaz :</strong> La priorité des tickets est calculée automatiquement par criticité de l'équipement et impact de la panne. Les interventions techniques uniques garantissent la traçabilité.
           </span>
         </span>
       </div>
 
-      {/* Barre de filtres */}
+      {/* Barre de filtres unifiée */}
       <Card className="border border-slate-200 bg-white p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -385,7 +398,7 @@ export default function TicketsPage() {
                         <div className="text-slate-800 font-medium line-clamp-2 text-xs">
                           {t.description}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
                           <span className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                             {t.categorie}
                           </span>
@@ -397,9 +410,19 @@ export default function TicketsPage() {
                         </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border ${prioriteInfo.badgeClass}`}>
-                          {prioriteInfo.label}
-                        </span>
+                        <div className="space-y-0.5">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border ${prioriteInfo.badgeClass}`}
+                            title={t.priorite_explication || `Priorité ${prioriteInfo.label}`}
+                          >
+                            {prioriteInfo.label}
+                          </span>
+                          {t.priorite_explication && (
+                            <p className="text-[10px] text-slate-400 line-clamp-1 max-w-[160px]" title={t.priorite_explication}>
+                              {t.priorite_explication}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-slate-500 text-xs">
                         {CANAUX_TICKETS[t.canal] || t.canal}
@@ -429,7 +452,7 @@ export default function TicketsPage() {
         </div>
       </Card>
 
-      {/* Modal Création de Ticket */}
+      {/* Modal Création de Ticket (Admin) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl my-8">
@@ -498,12 +521,15 @@ export default function TicketsPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700">Priorité</Label>
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Priorité (Calcul automatique ou forçage)
+                  </Label>
                   <select
                     value={formPriorite}
-                    onChange={(e) => setFormPriorite(e.target.value as PrioriteTicket)}
+                    onChange={(e) => setFormPriorite(e.target.value)}
                     className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
+                    <option value="auto">⚡ Automatique (recommandé)</option>
                     <option value="basse">Basse</option>
                     <option value="normale">Normale</option>
                     <option value="haute">Haute</option>
@@ -569,11 +595,11 @@ export default function TicketsPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-emerald-600" />
-                  Traitement du Ticket {formatNumeroTicket(activeTicket.numero)}
+                  <Wrench className="h-5 w-5 text-emerald-600" />
+                  Prise en charge Ticket {formatNumeroTicket(activeTicket.numero)}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Demandeur : {activeTicket.demandeur_nom} · {activeTicket.service_nom || "Service inconnu"}
+                <p className="text-xs text-slate-500">
+                  Demandeur : <strong>{activeTicket.demandeur_nom}</strong> ({activeTicket.service_nom || "Sans service"})
                 </p>
               </div>
               <button
@@ -586,15 +612,24 @@ export default function TicketsPage() {
             </div>
 
             <form onSubmit={handleUpdateTicket} className="mt-4 space-y-4">
-              {/* Résumé du problème */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
-                  Problème déclaré :
-                </span>
-                <p className="text-sm text-slate-900 font-medium">{activeTicket.description}</p>
+              {/* Rappel du problème */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Problème signalé :</span>
+                  <span className="text-emerald-700">{activeTicket.categorie}</span>
+                </div>
+                <p className="text-xs text-slate-800 leading-relaxed">
+                  {activeTicket.description}
+                </p>
                 {activeTicket.equipement_label && (
-                  <p className="text-xs text-emerald-700 font-medium mt-1">
-                    Équipement concerné : {activeTicket.equipement_label}
+                  <p className="text-xs text-slate-500 pt-1 border-t border-slate-200/60 font-mono">
+                    Matériel concerné : {activeTicket.equipement_label}
+                  </p>
+                )}
+                {activeTicket.priorite_explication && (
+                  <p className="text-[11px] text-slate-500 italic flex items-center gap-1 mt-1">
+                    <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
+                    <span>{activeTicket.priorite_explication}</span>
                   </p>
                 )}
               </div>

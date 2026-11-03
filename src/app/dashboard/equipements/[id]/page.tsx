@@ -101,7 +101,7 @@ export default function EquipementDetailPage({
         setModele(eq.modele || "");
         setNumeroSerie(eq.numero_serie || "");
         setDateAchat(eq.date_achat ? eq.date_achat.slice(0, 10) : "");
-        setEtat(eq.etat || "en_service");
+        setEtat((eq.etat as any) === "reforme" ? "hors_service" : (eq.etat || "en_service"));
         setLocalisation(eq.localisation || "");
         setDescription(eq.description || "");
       } else {
@@ -184,7 +184,7 @@ export default function EquipementDetailPage({
   }
 
   const etatInfo = ETATS_EQUIPEMENTS[data.etat] || {
-    label: data.etat,
+    label: data.etat === ("reforme" as any) ? "Hors service" : data.etat,
     badgeClass: "bg-slate-100 text-slate-600 border-slate-200",
     dotClass: "bg-slate-400",
   };
@@ -264,7 +264,7 @@ export default function EquipementDetailPage({
                       <option value="en_service">En service</option>
                       <option value="en_panne">En panne</option>
                       <option value="en_maintenance">En maintenance</option>
-                      <option value="reforme">Réformé</option>
+                      <option value="hors_service">Hors service</option>
                     </select>
                   </div>
 

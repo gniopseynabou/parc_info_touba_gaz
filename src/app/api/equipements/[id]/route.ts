@@ -3,7 +3,6 @@ import pool from "@/lib/db";
 import { RowDataPacket, ResultSetHeader } from "mysql2";
 import { requireAuth } from "@/lib/auth";
 
-
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -38,6 +37,11 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Équipement non trouvé." }, { status: 404 });
     }
 
+    const equipement = {
+      ...rows[0],
+      etat: rows[0].etat === "reforme" ? "hors_service" : rows[0].etat,
+    };
+
     // Récupérer l'historique des affectations
     const [historique] = await pool.query<RowDataPacket[]>(
       `SELECT 
@@ -67,7 +71,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        ...rows[0],
+        ...equipement,
         historique,
         tickets,
       },
@@ -90,7 +94,11 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { type, marque, modele, numero_serie, date_achat, etat, localisation, description, archive } = body;
+    let { type, marque, modele, numero_serie, date_achat, etat, localisation, description, archive } = body;
+
+    if (etat === "reforme") {
+      etat = "hors_service";
+    }
 
     await pool.query<ResultSetHeader>(
       `UPDATE equipements 

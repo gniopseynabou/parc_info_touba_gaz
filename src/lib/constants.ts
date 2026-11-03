@@ -35,8 +35,8 @@ export const ETATS_EQUIPEMENTS: Record<EtatEquipement, { label: string; badgeCla
     badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
     dotClass: "bg-amber-500",
   },
-  reforme: {
-    label: "Réformé",
+  hors_service: {
+    label: "Hors service",
     badgeClass: "bg-slate-100 text-slate-600 border-slate-200",
     dotClass: "bg-slate-400",
   },
