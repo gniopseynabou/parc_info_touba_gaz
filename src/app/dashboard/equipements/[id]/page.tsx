@@ -19,6 +19,10 @@ import {
   Save,
   Loader2,
   LifeBuoy,
+  Camera,
+  Upload,
+  X,
+  ImageIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,6 +91,9 @@ export default function EquipementDetailPage({
   const [etat, setEtat] = useState<EtatEquipement>("en_service");
   const [localisation, setLocalisation] = useState("");
   const [description, setDescription] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -104,6 +111,9 @@ export default function EquipementDetailPage({
         setEtat((eq.etat as any) === "reforme" ? "hors_service" : (eq.etat || "en_service"));
         setLocalisation(eq.localisation || "");
         setDescription(eq.description || "");
+        setPhotoUrl(eq.photo || null);
+        setPhotoFile(null);
+        setPhotoPreview(null);
       } else {
         toast.error(json.message || "Équipement introuvable.");
         router.push("/dashboard/equipements");
@@ -120,6 +130,39 @@ export default function EquipementDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("L'image ne doit pas dépasser 5 Mo.");
+      return;
+    }
+
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Formats acceptés : JPG, JPEG, PNG, WEBP.");
+      return;
+    }
+
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const uploadPhoto = async (file: File): Promise<string | null> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/equipements/upload", {
+      method: "POST",
+      body: fd,
+    });
+    const json = await res.json();
+    if (res.ok && json.success) {
+      return json.photoUrl;
+    }
+    throw new Error(json.message || "Échec de l'upload de la photo.");
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!type.trim()) {
@@ -129,6 +172,11 @@ export default function EquipementDetailPage({
 
     setIsSaving(true);
     try {
+      let finalPhoto = photoUrl;
+      if (photoFile) {
+        finalPhoto = await uploadPhoto(photoFile);
+      }
+
       const res = await fetch(`/api/equipements/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -141,6 +189,7 @@ export default function EquipementDetailPage({
           etat,
           localisation,
           description,
+          photo: finalPhoto,
         }),
       });
 
@@ -151,8 +200,8 @@ export default function EquipementDetailPage({
       } else {
         toast.error(json.message || "Erreur lors de la mise à jour.");
       }
-    } catch {
-      toast.error("Erreur serveur lors de l'enregistrement.");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur serveur lors de l'enregistrement.");
     } finally {
       setIsSaving(false);
     }
@@ -193,7 +242,7 @@ export default function EquipementDetailPage({
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/dashboard/equipements">
-          <Button variant="ghost" size="sm" className="gap-2 text-slate-600 hover:text-slate-900">
+          <Button variant="ghost" size="sm" className="gap-2 text-slate-600 hover:text-slate-900 cursor-pointer">
             <ArrowLeft className="h-4 w-4" />
             Retour à l'inventaire
           </Button>
@@ -214,7 +263,7 @@ export default function EquipementDetailPage({
             variant="ghost"
             size="sm"
             onClick={handleArchive}
-            className="text-slate-500 hover:text-rose-700 hover:bg-rose-50 gap-1.5"
+            className="text-slate-500 hover:text-rose-700 hover:bg-rose-50 gap-1.5 cursor-pointer"
           >
             <Trash2 className="h-4 w-4" />
             Archiver
@@ -231,11 +280,61 @@ export default function EquipementDetailPage({
                 Caractéristiques & Modifications
               </CardTitle>
               <CardDescription className="text-sm text-slate-500">
-                Mettre à jour les spécifications techniques et l'état opérationnel.
+                Mettre à jour les spécifications techniques, la photo et l'état opérationnel.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6">
               <form onSubmit={handleUpdate} className="space-y-4">
+                {/* Section Photo */}
+                <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 space-y-2">
+                  <Label className="text-xs font-semibold text-slate-700">Photo du matériel</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    {photoPreview || photoUrl ? (
+                      <div className="relative h-28 w-28 rounded-xl overflow-hidden border border-slate-200 bg-white shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photoPreview || photoUrl || ""}
+                          alt="Photo équipement"
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhotoUrl(null);
+                            setPhotoFile(null);
+                            setPhotoPreview(null);
+                          }}
+                          className="absolute top-1 right-1 p-1 rounded-full bg-slate-900/70 text-white hover:bg-rose-600 transition-colors cursor-pointer"
+                          title="Supprimer la photo"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="h-28 w-28 rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
+                        <ImageIcon className="h-6 w-6 text-slate-300 mb-1" />
+                        <span className="text-[10px]">Aucune photo</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 flex-1">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer shadow-xs transition-colors">
+                        <Upload className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>{photoUrl || photoPreview ? "Remplacer la photo" : "Téléverser une photo"}</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handlePhotoSelect}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        Sélectionnez un fichier JPG, JPEG, PNG ou WEBP depuis votre appareil (5 Mo max).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">Type de matériel *</Label>
@@ -330,7 +429,7 @@ export default function EquipementDetailPage({
                   <Button
                     type="submit"
                     disabled={isSaving}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow-xs cursor-pointer"
                   >
                     {isSaving ? (
                       <>
@@ -358,11 +457,11 @@ export default function EquipementDetailPage({
                   Historique des affectations
                 </CardTitle>
                 <CardDescription className="text-sm text-slate-500">
-                  Traçabilité chronologique des bénéficiaires successifs (RG03, RG09).
+                  Traçabilité chronologique des bénéficiaires successifs (employés et services).
                 </CardDescription>
               </div>
               <Link href="/dashboard/affectations">
-                <Button variant="outline" size="xs" className="border-slate-200 text-slate-700 hover:bg-slate-50">
+                <Button variant="outline" size="sm" className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs">
                   Nouvelle affectation
                 </Button>
               </Link>
@@ -435,6 +534,23 @@ export default function EquipementDetailPage({
 
         {/* Colonne droite : Synthèse & Tickets associés */}
         <div className="space-y-6">
+          {/* Carte Photo & Aperçu */}
+          {data.photo && (
+            <Card className="border border-slate-200 bg-white overflow-hidden shadow-xs">
+              <div className="relative h-52 w-full bg-slate-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={data.photo}
+                  alt={`${data.type} ${data.marque || ""}`}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="p-3 text-xs text-slate-500 text-center border-t border-slate-100">
+                Photo officielle du matériel
+              </div>
+            </Card>
+          )}
+
           {/* Carte Affectation Actuelle */}
           <Card className="border border-slate-200 bg-white shadow-xs">
             <CardHeader className="border-b border-slate-100 px-5 py-4">
@@ -457,7 +573,7 @@ export default function EquipementDetailPage({
                   )}
                   <div className="mt-4 pt-3 border-t border-slate-100">
                     <Link href="/dashboard/affectations">
-                      <Button size="xs" variant="outline" className="w-full border-slate-200 text-slate-700 hover:bg-slate-50">
+                      <Button size="sm" variant="outline" className="w-full border-slate-200 text-slate-700 hover:bg-slate-50 text-xs">
                         Modifier ou réaffecter
                       </Button>
                     </Link>
@@ -467,7 +583,7 @@ export default function EquipementDetailPage({
                 <div className="text-center py-4">
                   <p className="text-sm text-slate-500 italic">Cet équipement est actuellement en stock (non affecté).</p>
                   <Link href="/dashboard/affectations" className="mt-3 inline-block">
-                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs">
                       Attribuer cet équipement
                     </Button>
                   </Link>
@@ -497,7 +613,7 @@ export default function EquipementDetailPage({
                       <li key={tck.id} className="p-4 hover:bg-slate-50/70 transition-colors">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono font-bold text-emerald-700">
-                            {formatNumeroTicket(tck.numero)}
+                            #{formatNumeroTicket(tck.numero)}
                           </span>
                           <span className="text-slate-400">{formatDateFr(tck.created_at)}</span>
                         </div>

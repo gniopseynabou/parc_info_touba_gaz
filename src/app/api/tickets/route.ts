@@ -4,6 +4,7 @@ import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { requireAuth } from "@/lib/auth";
 import { computeTicketPriority } from "@/lib/priority";
+import { notifyAdmins } from "@/lib/notifications";
 
 export async function GET(req: Request) {
   try {
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
       const [eqRows] = await pool.query<RowDataPacket[]>(
         `SELECT e.id, e.type, e.marque, e.modele, e.archive,
                 a.employe_id as aff_employe_id, a.service_id as aff_service_id
-         FROM equipements e
+         FROM equipements 
          LEFT JOIN affectations a ON a.equipement_id = e.id AND a.date_fin IS NULL
          WHERE e.id = ?`,
         [equipement_id]
@@ -209,6 +210,21 @@ export async function POST(req: Request) {
       } else {
         throw insertError;
       }
+    }
+
+    // Notification automatique aux administrateurs IT
+    try {
+      const demandeurNom = `${employe.prenom || ""} ${employe.nom || ""}`.trim() || "Un employé";
+      const canalLabel = canal ? ` (${canal})` : "";
+      await notifyAdmins({
+        ticketId: id,
+        titre: `Nouvelle demande d'assistance${canalLabel}`,
+        message: `${demandeurNom} a soumis une demande : "${description.trim().slice(0, 100)}${description.trim().length > 100 ? "..." : ""}"`,
+        type: "ticket_cree",
+        excludeUserId: session.role === "admin" ? session.id : undefined,
+      });
+    } catch (notifErr) {
+      console.error("Erreur notification admin:", notifErr);
     }
 
     return NextResponse.json({

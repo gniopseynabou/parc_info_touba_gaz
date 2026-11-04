@@ -3,7 +3,6 @@ import pool from "@/lib/db";
 import { RowDataPacket } from "mysql2";
 import { requireAuth } from "@/lib/auth";
 
-
 export async function GET(req: Request) {
   try {
     const authResult = await requireAuth(req, ["admin"]);
@@ -15,7 +14,11 @@ export async function GET(req: Request) {
     const dateDebut = searchParams.get("date_debut"); // ex: 2026-10-01
     const dateFin = searchParams.get("date_fin");     // ex: 2026-10-31
     const serviceId = searchParams.get("service_id");
+    const employeId = searchParams.get("employe_id");
+    const typeEquipement = searchParams.get("type_equipement");
+    const etatEquipement = searchParams.get("etat_equipement");
     const statut = searchParams.get("statut");
+    const priorite = searchParams.get("priorite");
 
     // 1. Récupération des interventions sur la période
     let queryInterventions = `
@@ -63,9 +66,25 @@ export async function GET(req: Request) {
       queryInterventions += ` AND t.service_id = ?`;
       paramsInt.push(serviceId);
     }
+    if (employeId && employeId !== "tous") {
+      queryInterventions += ` AND t.demandeur_id = ?`;
+      paramsInt.push(employeId);
+    }
+    if (typeEquipement && typeEquipement !== "tous") {
+      queryInterventions += ` AND e.type = ?`;
+      paramsInt.push(typeEquipement);
+    }
+    if (etatEquipement && etatEquipement !== "tous") {
+      queryInterventions += ` AND e.etat = ?`;
+      paramsInt.push(etatEquipement);
+    }
     if (statut && statut !== "tous") {
       queryInterventions += ` AND t.statut = ?`;
       paramsInt.push(statut);
+    }
+    if (priorite && priorite !== "tous") {
+      queryInterventions += ` AND t.priorite = ?`;
+      paramsInt.push(priorite);
     }
 
     queryInterventions += ` ORDER BY i.debut DESC`;
@@ -108,17 +127,104 @@ export async function GET(req: Request) {
       queryTickets += ` AND t.service_id = ?`;
       paramsTck.push(serviceId);
     }
+    if (employeId && employeId !== "tous") {
+      queryTickets += ` AND t.demandeur_id = ?`;
+      paramsTck.push(employeId);
+    }
+    if (typeEquipement && typeEquipement !== "tous") {
+      queryTickets += ` AND e.type = ?`;
+      paramsTck.push(typeEquipement);
+    }
+    if (etatEquipement && etatEquipement !== "tous") {
+      queryTickets += ` AND e.etat = ?`;
+      paramsTck.push(etatEquipement);
+    }
     if (statut && statut !== "tous") {
       queryTickets += ` AND t.statut = ?`;
       paramsTck.push(statut);
+    }
+    if (priorite && priorite !== "tous") {
+      queryTickets += ` AND t.priorite = ?`;
+      paramsTck.push(priorite);
     }
 
     queryTickets += ` ORDER BY t.created_at DESC`;
     const [tickets] = await pool.query<RowDataPacket[]>(queryTickets, paramsTck);
 
-    // 3. Synthèse chiffrée de la période
-    const totalIncidents = tickets.length;
-    const totalInterventions = interventions.length;
+    // 3. Répartition des équipements par état (A)
+    let queryEqEtat = `
+      SELECT 
+        CASE 
+          WHEN etat = 'reforme' THEN 'hors_service'
+          ELSE etat
+        END as etat,
+        COUNT(*) as count
+      FROM equipements e
+      WHERE e.archive = 0
+    `;
+    const paramsEqEtat: string[] = [];
+    if (typeEquipement && typeEquipement !== "tous") {
+      queryEqEtat += ` AND e.type = ?`;
+      paramsEqEtat.push(typeEquipement);
+    }
+    queryEqEtat += ` GROUP BY etat`;
+    const [eqEtatRows] = await pool.query<RowDataPacket[]>(queryEqEtat, paramsEqEtat);
+
+    const equipementsParEtat: Record<string, number> = {
+      en_service: 0,
+      en_panne: 0,
+      en_maintenance: 0,
+      hors_service: 0,
+    };
+    for (const r of eqEtatRows) {
+      const k = String(r.etat);
+      if (equipementsParEtat[k] !== undefined) {
+        equipementsParEtat[k] += Number(r.count || 0);
+      }
+    }
+
+    // 4. Répartition des équipements par type (B)
+    const [eqTypeRows] = await pool.query<RowDataPacket[]>(`
+      SELECT 
+        COALESCE(type, 'Non catégorisé') as type,
+        COUNT(*) as count
+      FROM equipements
+      WHERE archive = 0
+      GROUP BY type
+      ORDER BY count DESC
+    `);
+    const equipementsParType = eqTypeRows.map((r) => ({
+      type: String(r.type),
+      count: Number(r.count),
+    }));
+
+    // 5. Évolution temporelle des tickets (C)
+    // Regroupement par date de création
+    const ticketsEvolutionMap = new Map<string, number>();
+    for (const t of tickets) {
+      if (t.created_at) {
+        const d = new Date(t.created_at).toISOString().split("T")[0];
+        ticketsEvolutionMap.set(d, (ticketsEvolutionMap.get(d) || 0) + 1);
+      }
+    }
+    const ticketsEvolution = Array.from(ticketsEvolutionMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 6. Répartition des tickets par priorité (D)
+    const prioritesCount: Record<string, number> = {
+      basse: 0,
+      normale: 0,
+      haute: 0,
+      critique: 0,
+    };
+    for (const t of tickets) {
+      if (t.priorite && prioritesCount[t.priorite] !== undefined) {
+        prioritesCount[t.priorite]++;
+      }
+    }
+
+    // 7. Répartition des tickets par statut (E)
     const statutsCount: Record<string, number> = {
       nouveau: 0,
       en_cours: 0,
@@ -126,32 +232,39 @@ export async function GET(req: Request) {
       resolu: 0,
       cloture: 0,
     };
-    const prioritesCount: Record<string, number> = {
-      basse: 0,
-      normale: 0,
-      haute: 0,
-      critique: 0,
-    };
-    let dureeTotaleMinutes = 0;
-
     for (const t of tickets) {
       if (t.statut && statutsCount[t.statut] !== undefined) {
         statutsCount[t.statut]++;
       }
-      if (t.priorite && prioritesCount[t.priorite] !== undefined) {
-        prioritesCount[t.priorite]++;
-      }
     }
 
-    for (const intItem of interventions) {
-      if (intItem.duree_minutes && intItem.duree_minutes > 0) {
-        dureeTotaleMinutes += Number(intItem.duree_minutes);
+    // 8. Évolution temporelle des interventions (F)
+    const interventionsEvolutionMap = new Map<string, { count: number; duree: number }>();
+    let dureeTotaleMinutes = 0;
+    for (const i of interventions) {
+      if (i.debut) {
+        const d = new Date(i.debut).toISOString().split("T")[0];
+        const prev = interventionsEvolutionMap.get(d) || { count: 0, duree: 0 };
+        const dur = Number(i.duree_minutes || 0);
+        interventionsEvolutionMap.set(d, {
+          count: prev.count + 1,
+          duree: prev.duree + dur,
+        });
+        dureeTotaleMinutes += dur;
       }
     }
+    const interventionsEvolution = Array.from(interventionsEvolutionMap.entries())
+      .map(([date, val]) => ({ date, count: val.count, duree: val.duree }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    const tauxResolution = totalIncidents > 0
-      ? Math.round(((statutsCount.resolu + statutsCount.cloture) / totalIncidents) * 100)
-      : 100;
+    const totalIncidents = tickets.length;
+    const totalInterventions = interventions.length;
+    const tauxResolution =
+      totalIncidents > 0
+        ? Math.round(
+            ((statutsCount.resolu + statutsCount.cloture) / totalIncidents) * 100
+          )
+        : 100;
 
     return NextResponse.json({
       success: true,
@@ -160,7 +273,9 @@ export async function GET(req: Request) {
           date_debut: dateDebut || null,
           date_fin: dateFin || null,
           service_id: serviceId || "tous",
+          type_equipement: typeEquipement || "tous",
           statut: statut || "tous",
+          priorite: priorite || "tous",
         },
         synthese: {
           totalIncidents,
@@ -169,6 +284,14 @@ export async function GET(req: Request) {
           prioritesCount,
           dureeTotaleMinutes,
           tauxResolution,
+        },
+        graphiques: {
+          equipementsParEtat,
+          equipementsParType,
+          ticketsEvolution,
+          prioritesCount,
+          statutsCount,
+          interventionsEvolution,
         },
         interventions,
         tickets,

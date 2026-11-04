@@ -15,16 +15,10 @@ import {
   Ban,
   Archive,
   ServerCrash,
+  Users,
+  ExternalLink,
+  Package,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { RefreshButton } from "@/components/dashboard/refresh-button";
 import {
   formatDateFr,
   formatNumeroTicket,
@@ -66,7 +60,9 @@ type RecentTicket = Pick<
 interface DashboardData {
   stats: DashboardStats;
   recentTickets: RecentTicket[];
+  totalTicketsCount: number;
   equipementsParService: ServiceEquipementStat[];
+  totalServicesCount: number;
   snapshotTime: string;
   error?: string;
 }
@@ -96,6 +92,7 @@ async function getDashboardData(): Promise<DashboardData> {
         (SELECT COUNT(*) FROM affectations WHERE date_fin IS NULL) as totalAffectationsActives
     `);
 
+    // Récupérer les tickets récents (limité aux 4 premiers selon la règle de la photo)
     const [ticketRows] = await pool.query<DashboardTicketRow[]>(`
       SELECT t.id, t.numero, t.description, t.priorite, t.statut, t.created_at,
              CONCAT(emp.prenom, ' ', emp.nom) as demandeur_nom,
@@ -104,7 +101,7 @@ async function getDashboardData(): Promise<DashboardData> {
       LEFT JOIN employes emp ON emp.id = t.demandeur_id
       LEFT JOIN services srv ON srv.id = t.service_id
       ORDER BY t.created_at DESC
-      LIMIT 6
+      LIMIT 10
     `);
 
     // Répartition des équipements affectés par service
@@ -159,7 +156,9 @@ async function getDashboardData(): Promise<DashboardData> {
     return {
       stats,
       recentTickets,
+      totalTicketsCount: stats.totalTickets,
       equipementsParService: serviceRows,
+      totalServicesCount: serviceRows.length,
       snapshotTime,
     };
   } catch (err: unknown) {
@@ -186,7 +185,9 @@ async function getDashboardData(): Promise<DashboardData> {
         totalAffectationsActives: 0,
       },
       recentTickets: [],
+      totalTicketsCount: 0,
       equipementsParService: [],
+      totalServicesCount: 0,
       snapshotTime,
       error: errorMsg,
     };
@@ -199,20 +200,17 @@ async function DashboardContent() {
   if (result.error) {
     return (
       <div className="space-y-6">
-        <section className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-800 shadow-xs">
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-800 shadow-xs">
           <div className="flex items-start gap-3">
-            <ServerCrash className="h-6 w-6 text-rose-600 shrink-0 mt-0.5" />
+            <ServerCrash className="size-6 text-rose-600 shrink-0 mt-0.5" />
             <div className="space-y-2">
               <h2 className="text-base font-bold text-rose-900">
                 Connexion à la base de données momentanément indisponible
               </h2>
               <p className="text-sm text-rose-700 leading-relaxed">
-                Le serveur Next.js n'a pas pu joindre le serveur MySQL ({result.error}).
-                Vérifiez que votre service MySQL local (XAMPP / MariaDB) est bien actif.
+                Le serveur n'a pas pu joindre MySQL ({result.error}).
+                Vérifiez que votre service MySQL local est actif.
               </p>
-              <div className="pt-2">
-                <RefreshButton />
-              </div>
             </div>
           </div>
         </section>
@@ -220,383 +218,476 @@ async function DashboardContent() {
     );
   }
 
-  const { stats, recentTickets = [], equipementsParService = [], snapshotTime } = result;
+  const {
+    stats,
+    recentTickets = [],
+    totalTicketsCount,
+    equipementsParService = [],
+    totalServicesCount,
+    snapshotTime,
+  } = result;
 
-  const tauxDisponibilite = stats.totalEquipements > 0
-    ? Math.round((stats.equipementsEnService / stats.totalEquipements) * 100)
-    : 100;
+  const tauxDisponibilite =
+    stats.totalEquipements > 0
+      ? Math.round((stats.equipementsEnService / stats.totalEquipements) * 100)
+      : 100;
 
-  const ticketsOuverts = stats.ticketsNouveaux + stats.ticketsEnCours + stats.ticketsEnAttente;
-  const ticketsResolusEnAttenteCloture = stats.ticketsResolus;
+  const ticketsOuverts =
+    stats.ticketsNouveaux + stats.ticketsEnCours + stats.ticketsEnAttente;
+
+  // RÈGLE : Afficher 4 cartes maximum dans chaque section (comme la photo de référence)
+  const visibleTickets = recentTickets.slice(0, 4);
+  const visibleServices = equipementsParService.slice(0, 4);
 
   return (
-    <div className="space-y-7">
-      {/* En-tête éditorial Touba Gaz */}
-      <section className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div className="max-w-2xl">
-          <p className="mb-1 text-xs font-bold uppercase tracking-wider text-emerald-600">
-            Supervision du parc informatique · Touba Gaz SA
-          </p>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            Tableau de bord
-          </h1>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Suivi du parc, état du matériel et demandes d'assistance.
-          </p>
-          {snapshotTime && (
-            <p className="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-slate-400" />
-              Données actualisées à {snapshotTime}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <RefreshButton />
-          <Link href="/dashboard/tickets">
-            <Button className="h-10 gap-2 bg-emerald-600 px-4 text-white hover:bg-emerald-700 shadow-xs cursor-pointer">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nouveau ticket
-            </Button>
+    <div className="space-y-6">
+      {/* 1. SECTION 4 CARTES KPI HORIZONTALES (Exactement comme la photo : icône à gauche, titre, chiffre 0, bouton Gérer, carte Créer) */}
+      <section aria-label="Indicateurs clés du parc">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Carte 1 : Total Équipements (Stock) */}
+          <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs hover:border-slate-300 transition-all">
+            <div className="flex items-start justify-between">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 text-slate-700">
+                <Laptop className="size-6" />
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-slate-700 leading-tight">
+                  Total Équipements
+                </p>
+                <p className="text-[11px] text-slate-400 font-normal">
+                  (Parc global)
+                </p>
+              </div>
+              <Link
+                href="/dashboard/equipements"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+              >
+                Gérer
+              </Link>
+            </div>
+            <div className="mt-4">
+              <p className="text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums">
+                {stats.totalEquipements}
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {tauxDisponibilite}% opérationnels
+              </p>
+            </div>
+          </div>
+
+          {/* Carte 2 : En service */}
+          <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs hover:border-slate-300 transition-all">
+            <div className="flex items-start justify-between">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600">
+                <CheckCircle2 className="size-6" />
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-slate-700 leading-tight">
+                  En service
+                </p>
+                <p className="text-[11px] text-slate-400 font-normal">
+                  (Opérationnel)
+                </p>
+              </div>
+              <Link
+                href="/dashboard/equipements"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+              >
+                Gérer
+              </Link>
+            </div>
+            <div className="mt-4">
+              <p className="text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums">
+                {stats.equipementsEnService}
+              </p>
+              <p className="mt-1 text-xs font-medium text-emerald-600">
+                Disponibles & en dotation
+              </p>
+            </div>
+          </div>
+
+          {/* Carte 3 : Demandes d'assistance (Tickets actifs) */}
+          <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs hover:border-slate-300 transition-all">
+            <div className="flex items-start justify-between">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50 text-sky-600">
+                <LifeBuoy className="size-6" />
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-slate-700 leading-tight">
+                  Tickets Actifs
+                </p>
+                <p className="text-[11px] text-slate-400 font-normal">
+                  (En attente)
+                </p>
+              </div>
+              <Link
+                href="/dashboard/tickets"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+              >
+                Gérer
+              </Link>
+            </div>
+            <div className="mt-4">
+              <p className="text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums">
+                {ticketsOuverts}
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {stats.ticketsNouveaux} nouv. · {stats.ticketsEnCours} en cours
+              </p>
+            </div>
+          </div>
+
+          {/* Carte 4 : Action directe (comme 'Créer un EDB' sur la photo) */}
+          <Link
+            href="/dashboard/tickets"
+            className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs hover:border-emerald-300 hover:bg-emerald-50/20 transition-all group cursor-pointer"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-900 leading-tight group-hover:text-emerald-700 transition-colors">
+                  Créer un ticket
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Signaler un incident
+                </p>
+              </div>
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-600 group-hover:scale-105 transition-transform">
+                <Plus className="size-6" />
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-emerald-700">
+              <span>Déclarer une panne</span>
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+            </div>
           </Link>
         </div>
       </section>
 
-      {/* Bloc 1 : Indicateurs du Parc Informatique */}
-      <div>
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-          État du parc informatique
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Total des équipements informatiques inventoriés">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Équipements</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
-                  {stats.totalEquipements}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">{tauxDisponibilite} % opérationnels</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-700 bg-slate-100" title="Inventaire matériel">
-                <Laptop className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Équipements opérationnels et disponibles">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En service</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
-                  {stats.equipementsEnService}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Opérationnels</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-emerald-600 bg-emerald-50 ring-1 ring-emerald-200/50" title="Matériel en service">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Équipements signalés en panne">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En panne</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-rose-600 tabular-nums">
-                  {stats.equipementsEnPanne}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Diagnostic requis</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-rose-600 bg-rose-50 ring-1 ring-rose-200/50" title="Matériel en panne">
-                <AlertTriangle className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Équipements en cours de réparation en atelier">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En maintenance</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-amber-600 tabular-nums">
-                  {stats.equipementsEnMaintenance}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Intervention atelier</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-600 bg-amber-50 ring-1 ring-amber-200/50" title="En cours de maintenance">
-                <Wrench className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Équipements amortis ou définitivement hors service">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Hors service</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-500 tabular-nums">
-                  {stats.equipementsHorsService}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Amortis / retirés</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 bg-slate-100" title="Matériel hors service">
-                <Ban className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Bloc 2 : Demandes d'assistance (Tickets & Statuts) */}
-      <div>
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-          Demandes d'assistance & Statuts
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Tickets nouvellement créés en attente de prise en charge">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nouveaux</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-sky-600 tabular-nums">
-                  {stats.ticketsNouveaux}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">À prendre en charge</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sky-600 bg-sky-50 ring-1 ring-sky-200/50">
-                <LifeBuoy className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Tickets avec intervention technique en cours">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En cours</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-amber-600 tabular-nums">
-                  {stats.ticketsEnCours}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Traitement actif</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-600 bg-amber-50 ring-1 ring-amber-200/50">
-                <Wrench className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Tickets en attente de pièces ou de retour collaborateur">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">En attente</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-purple-600 tabular-nums">
-                  {stats.ticketsEnAttente}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Pièce / retour</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-purple-600 bg-purple-50 ring-1 ring-purple-200/50">
-                <Clock className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Tickets dont la solution technique a été apportée">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Résolus</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
-                  {ticketsResolusEnAttenteCloture}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Attente clôture</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-emerald-600 bg-emerald-50 ring-1 ring-emerald-200/50">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-slate-200 bg-white shadow-xs" title="Tickets validés et clôturés définitivement">
-            <CardContent className="flex items-start justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clôturés</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-slate-500 tabular-nums">
-                  {stats.ticketsClotures}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">Archivés</p>
-              </div>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 bg-slate-100">
-                <Archive className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Bloc 3 : Deux colonnes d'analyse détaillée */}
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {/* Ventilation des équipements par Service */}
-        <Card className="border border-slate-200 bg-white shadow-xs">
-          <CardHeader className="border-b border-slate-100 px-5 py-4 flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                <Building2 className="h-4 w-4 text-emerald-600" />
-                Équipements par service
-              </CardTitle>
-              <CardDescription className="text-sm text-slate-500">
-                Ventilation du matériel affecté par direction de Touba Gaz
-              </CardDescription>
-            </div>
-            <Link
-              href="/dashboard/affectations"
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-            >
-              Affectations <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-5">
-            {equipementsParService.length === 0 ? (
-              <p className="text-sm text-slate-500 py-6 text-center">
-                Aucun service actif recensé.
-              </p>
-            ) : (
-              <div className="space-y-3.5">
-                {equipementsParService.map((srv) => {
-                  const maxEq = Math.max(...equipementsParService.map((s) => s.total_equipements), 1);
-                  const pct = Math.round((srv.total_equipements / maxEq) * 100);
-                  return (
-                    <div key={srv.service_nom} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-slate-700">{srv.service_nom}</span>
-                        <span className="font-semibold text-emerald-700 tabular-nums">
-                          {srv.total_equipements} <span className="text-slate-500 font-normal">équip.</span>
-                        </span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-600 rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Derniers tickets enregistrés avec statut */}
-        <Card className="border border-slate-200 bg-white shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                <LifeBuoy className="h-4 w-4 text-emerald-600" />
-                Derniers signalements d'assistance
-              </CardTitle>
-              <CardDescription className="mt-0.5 text-sm text-slate-500">
-                {ticketsOuverts} demandes en cours de traitement
-              </CardDescription>
-            </div>
-            <Link
-              href="/dashboard/tickets"
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700"
-            >
-              Tous les tickets <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            {recentTickets.length === 0 ? (
-              <div className="px-5 py-10 text-center">
-                <p className="text-sm font-medium text-slate-700">Aucun ticket enregistré</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Les nouveaux signalements apparaîtront ici.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {recentTickets.map((ticket) => {
-                  const status = STATUTS_TICKETS[ticket.statut];
-                  const priority = PRIORITES_TICKETS[ticket.priorite];
-                  return (
-                    <li key={ticket.id} className="px-5 py-3.5 transition-colors hover:bg-slate-50/70">
-                      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-mono text-xs font-semibold text-emerald-700">
-                              {formatNumeroTicket(ticket.numero)}
-                            </span>
-                            <span className="text-xs text-slate-400">
-                              {formatDateFr(ticket.created_at)}
-                            </span>
-                          </div>
-                          <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-900">
-                            {ticket.description}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-500">
-                            {ticket.demandeur_nom || "Demandeur inconnu"}
-                            {ticket.service_nom ? ` · ${ticket.service_nom}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          {priority && (
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${priority.badgeClass}`}>
-                              {priority.label}
-                            </span>
-                          )}
-                          {status && (
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${status.badgeClass}`}>
-                              {status.label}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Raccourcis métier rapides */}
-      <section aria-label="Raccourcis de gestion" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* Onglets légers de filtrage rapide (comme 'Stock | Standard | ODM' sur la photo) */}
+      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 w-fit">
+        <Link
+          href="/dashboard"
+          className="px-4 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-2xs"
+        >
+          Vue générale
+        </Link>
         <Link
           href="/dashboard/equipements"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
+          className="px-4 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
-            <Laptop className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-slate-900">Gérer le parc</span>
-            <span className="mt-0.5 block text-xs text-slate-500">{stats.totalEquipements} équipements enregistrés</span>
-          </span>
-          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
+          Parc matériel
         </Link>
-
         <Link
-          href="/dashboard/affectations"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
+          href="/dashboard/tickets"
+          className="px-4 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
-            <Share2 className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-slate-900">Affectations du matériel</span>
-            <span className="mt-0.5 block text-xs text-slate-500">{stats.totalAffectationsActives} attributions en cours</span>
-          </span>
-          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
+          Assistance IT
         </Link>
+      </div>
 
-        <Link
-          href="/dashboard/rapports"
-          className="group flex min-h-16 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:bg-emerald-50/20"
-        >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
-            <TrendingUp className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-slate-900">Rapports d'activité</span>
-            <span className="mt-0.5 block text-xs text-slate-500">Édition et vue imprimable</span>
-          </span>
-          <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
-        </Link>
+      {/* 2. SECTION CENTRALE : TABLEAU D'ACTIVITÉ + CARTES STATS (Disposé exactement comme la photo de référence) */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Colonne gauche (7 colonnes) : Tableau des demandes récentes avec bouton 'Voir tout ↗' */}
+        <div className="lg:col-span-7 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+          <div>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Demandes d'assistance récentes
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Derniers signalements d'incidents
+                </p>
+              </div>
+
+              {/* Bouton Voir tout ↗ (exactement comme la photo de référence) */}
+              <Link
+                href="/dashboard/tickets"
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 hover:text-emerald-700 transition-colors shadow-2xs"
+              >
+                <span>Voir tout</span>
+                <span className="text-slate-400">↗</span>
+              </Link>
+            </div>
+
+            {/* Tableau lisible épuré */}
+            <div className="mt-4 overflow-x-auto">
+              {visibleTickets.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-400 italic">
+                  Aucun ticket enregistré.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-500 font-semibold">
+                      <th className="pb-3 pr-4">ID</th>
+                      <th className="pb-3 px-4">Demandeur</th>
+                      <th className="pb-3 px-4">Statut</th>
+                      <th className="pb-3 pl-4">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {visibleTickets.map((tck) => {
+                      const status = STATUTS_TICKETS[tck.statut];
+                      return (
+                        <tr key={tck.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 pr-4 whitespace-nowrap">
+                            <span className="font-bold text-slate-900 block font-mono">
+                              #{formatNumeroTicket(tck.numero)}
+                            </span>
+                            <span className="text-[11px] text-slate-400 block">
+                              {formatDateFr(tck.created_at)}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-semibold text-slate-800 block">
+                              {tck.demandeur_nom || "Demandeur"}
+                            </span>
+                            <span className="text-[11px] text-slate-400 block">
+                              {tck.service_nom || "Touba Gaz"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border ${
+                                status?.badgeClass || "bg-slate-50 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              {status?.label || tck.statut}
+                            </span>
+                          </td>
+                          <td className="py-3.5 pl-4 max-w-[180px]">
+                            <p className="line-clamp-2 text-slate-600 font-medium leading-relaxed">
+                              {tck.description}
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Colonne droite : Carte Mon Activité (comme sur la photo de référence) */}
+        <div className="lg:col-span-5 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+          <div>
+            <div className="text-center pb-4 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">
+                Mon Activité
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Novembre 2026
+              </p>
+            </div>
+
+            <div className="py-6 space-y-4">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Disponibilité du parc</span>
+                <span className="font-bold text-emerald-600">{tauxDisponibilite}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-600 rounded-full"
+                  style={{ width: `${tauxDisponibilite}%` }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[11px] text-slate-400 font-medium">Total Employés</p>
+                  <p className="text-xl font-bold text-slate-900 mt-0.5">{stats.totalEmployes}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[11px] text-slate-400 font-medium">Affectations</p>
+                  <p className="text-xl font-bold text-emerald-700 mt-0.5">{stats.totalAffectationsActives}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium">
+              Données synchronisées en temps réel
+            </span>
+            <span className="inline-flex items-center gap-1 font-bold text-emerald-600">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              Opérationnel
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. SECTION LIENS RAPIDES (Req 6 : Uniquement des routes existantes, vérifiées et actives) */}
+      <section aria-label="Liens rapides" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <TrendingUp className="size-5 text-emerald-600" />
+              Liens rapides de gestion
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Accès direct aux modules clés d'administration du parc
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Link
+            href="/dashboard/equipements"
+            className="group flex flex-col justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/70 hover:border-emerald-200 hover:bg-emerald-50/20 transition-all shadow-2xs cursor-pointer"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 border border-slate-200/80 group-hover:scale-105 transition-transform">
+                <Laptop className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Parc Informatique
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                  Inventaire, fiches, états & photos
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+              <span>Gérer le matériel</span>
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/affectations"
+            className="group flex flex-col justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/70 hover:border-emerald-200 hover:bg-emerald-50/20 transition-all shadow-2xs cursor-pointer"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 border border-slate-200/80 group-hover:scale-105 transition-transform">
+                <Share2 className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Dotations & Affectations
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                  Attribution aux employés & services
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+              <span>Suivre les dotations</span>
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/tickets"
+            className="group flex flex-col justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/70 hover:border-emerald-200 hover:bg-emerald-50/20 transition-all shadow-2xs cursor-pointer"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 border border-slate-200/80 group-hover:scale-105 transition-transform">
+                <LifeBuoy className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Assistance IT
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                  Gestion des pannes & dépannages
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+              <span>Résoudre les tickets</span>
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/rapports"
+            className="group flex flex-col justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/70 hover:border-emerald-200 hover:bg-emerald-50/20 transition-all shadow-2xs cursor-pointer"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 border border-slate-200/80 group-hover:scale-105 transition-transform">
+                <Package className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Rapports & Bilans DSI
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                  Exports PDF officiels & graphiques
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+              <span>Générer un bilan</span>
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+        </div>
+      </section>
+
+      {/* 4. SECTION BAS : RÉPARTITION PAR SERVICE (4 SERVICES MAX AVEC LIEN 'VOIR TOUT ↗') */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <Building2 className="size-5 text-emerald-600" />
+              Équipements par service
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Ventilation du matériel informatique par direction
+            </p>
+          </div>
+
+          {totalServicesCount > 4 && (
+            <Link
+              href="/dashboard/services"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 hover:text-emerald-700 transition-colors shadow-2xs"
+            >
+              <span>Voir tout</span>
+              <span className="text-slate-400">↗</span>
+            </Link>
+          )}
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {visibleServices.map((srv) => (
+            <div
+              key={srv.service_nom}
+              className="p-4 rounded-xl border border-slate-100 bg-slate-50/60 flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">
+                  {srv.service_nom}
+                </span>
+                <span className="text-xs font-bold text-emerald-700 tabular-nums">
+                  {srv.total_equipements} <span className="text-[10px] font-normal text-slate-400">unités</span>
+                </span>
+              </div>
+              <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-600 rounded-full"
+                  style={{
+                    width: `${Math.min(
+                      Math.round(
+                        (srv.total_equipements /
+                          Math.max(
+                            ...equipementsParService.map((s) => s.total_equipements),
+                            1
+                          )) *
+                          100
+                      ),
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
@@ -604,19 +695,18 @@ async function DashboardContent() {
 
 function DashboardFallback() {
   return (
-    <div className="space-y-7" aria-label="Chargement du tableau de bord" aria-busy="true">
-      <div className="h-36 animate-pulse rounded-xl border border-slate-200 bg-white" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => (
+    <div className="space-y-6" aria-label="Chargement du tableau de bord" aria-busy="true">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
           <div
             key={index}
-            className="h-28 animate-pulse rounded-xl border border-slate-200 bg-white"
+            className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white"
           />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="h-72 animate-pulse rounded-xl border border-slate-200 bg-white" />
-        <div className="h-72 animate-pulse rounded-xl border border-slate-200 bg-white" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <div className="lg:col-span-7 h-64 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+        <div className="lg:col-span-5 h-64 animate-pulse rounded-2xl border border-slate-200 bg-white" />
       </div>
     </div>
   );

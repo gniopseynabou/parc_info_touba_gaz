@@ -6,6 +6,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER ?? "root",
   password: process.env.DB_PASSWORD ?? "",
   database: process.env.DB_NAME ?? "parc_info_touba_gaz",
+  charset: "utf8mb4",
   waitForConnections: true,
   connectionLimit: 10,
   connectTimeout: 2000,

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   LifeBuoy,
   Plus,
-  RefreshCw,
   Search,
   CheckCircle2,
   Wrench,
@@ -33,6 +32,7 @@ import {
   formatDateFr,
 } from "@/lib/constants";
 import { toast } from "sonner";
+import { PhotoAttachments } from "@/components/tickets/photo-attachments";
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -52,6 +52,7 @@ export default function TicketsPage() {
   const [formPriorite, setFormPriorite] = useState<string>("auto");
   const [formCanal, setFormCanal] = useState<CanalTicket>("application");
   const [formEquipementId, setFormEquipementId] = useState("");
+  const [formPhotos, setFormPhotos] = useState<File[]>([]);
 
   // Modal Traitement Ticket & Intervention unique
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
@@ -112,22 +113,18 @@ export default function TicketsPage() {
 
     setIsSubmitting(true);
     try {
-      const payload: any = {
-        demandeur_id: formDemandeurId,
-        description: formDescription,
-        categorie: formCategorie,
-        canal: formCanal,
-        equipement_id: formEquipementId || null,
-      };
-
-      if (formPriorite !== "auto") {
-        payload.priorite = formPriorite;
-      }
+      const payload = new FormData();
+      payload.set("demandeur_id", formDemandeurId);
+      payload.set("description", formDescription);
+      payload.set("categorie", formCategorie);
+      payload.set("canal", formCanal);
+      payload.set("equipement_id", formEquipementId);
+      if (formPriorite !== "auto") payload.set("priorite", formPriorite);
+      formPhotos.forEach((photo) => payload.append("photos", photo));
 
       const res = await fetch("/api/tickets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: payload,
       });
 
       const json = await res.json();
@@ -139,6 +136,7 @@ export default function TicketsPage() {
         setIsModalOpen(false);
         setFormDescription("");
         setFormEquipementId("");
+        setFormPhotos([]);
         setFormPriorite("auto");
         loadData();
       } else {
@@ -166,15 +164,14 @@ export default function TicketsPage() {
     try {
       const res = await fetch(`/api/tickets/${ticket.id}`);
       const json = await res.json();
-      if (res.ok && json.success && json.data.intervention) {
-        const intv = json.data.intervention;
-        setActionIntervention(intv.actions || "");
-        setResultatIntervention(intv.resultat || "");
-        if (intv.date_debut) {
-          setIntDebut(intv.date_debut.slice(0, 16));
-        }
-        if (intv.date_fin) {
-          setIntFin(intv.date_fin.slice(0, 16));
+      if (res.ok && json.success) {
+        setActiveTicket({ ...ticket, attachments: json.data.attachments || [] });
+        if (json.data.intervention) {
+          const intv = json.data.intervention;
+          setActionIntervention(intv.actions || "");
+          setResultatIntervention(intv.resultat || "");
+          if (intv.date_debut) setIntDebut(intv.date_debut.slice(0, 16));
+          if (intv.date_fin) setIntFin(intv.date_fin.slice(0, 16));
         }
       }
     } catch {
@@ -261,16 +258,6 @@ export default function TicketsPage() {
         icon={LifeBuoy}
       >
         <Button
-          variant="outline"
-          size="default"
-          onClick={loadData}
-          className="h-10 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
-          Actualiser
-        </Button>
-
-        <Button
           onClick={() => setIsModalOpen(true)}
           className="h-10 gap-2 bg-emerald-600 px-4 text-white hover:bg-emerald-700 shadow-xs font-semibold cursor-pointer"
         >
@@ -329,14 +316,6 @@ export default function TicketsPage() {
               <option value="critique">Critique</option>
             </select>
 
-            <Button
-              type="submit"
-              size="sm"
-              variant="outline"
-              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
-            >
-              Filtrer
-            </Button>
           </div>
         </form>
       </Card>
@@ -566,6 +545,8 @@ export default function TicketsPage() {
                 />
               </div>
 
+              <PhotoAttachments files={formPhotos} onChange={setFormPhotos} disabled={isSubmitting} />
+
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <Button
                   type="button"
@@ -633,6 +614,32 @@ export default function TicketsPage() {
                   </p>
                 )}
               </div>
+
+              {activeTicket.attachments && activeTicket.attachments.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">Photos jointes</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {activeTicket.attachments.map((photo) => (
+                      <a
+                        key={photo.id}
+                        href={`/api/tickets/${activeTicket.id}/attachments/${photo.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="overflow-hidden rounded-lg border border-slate-200 hover:border-emerald-400"
+                      >
+                        {/* The private route checks ticket access before serving each image. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/tickets/${activeTicket.id}/attachments/${photo.id}`}
+                          alt={photo.original_name}
+                          className="h-28 w-full object-cover"
+                        />
+                        <span className="block truncate px-2 py-1 text-[10px] text-slate-600">{photo.original_name}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Statut du Ticket */}
               <div className="space-y-1.5">

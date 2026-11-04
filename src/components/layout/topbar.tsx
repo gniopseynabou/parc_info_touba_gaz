@@ -1,43 +1,92 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
-import { Menu, LogOut, Shield } from "lucide-react";
+import { useState, useEffect } from "react";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import {
+  ChevronRight,
+  LogOut,
+  Search,
+  Laptop,
+  Share2,
+  LifeBuoy,
+  Users,
+  Building2,
+  BarChart3,
+  ExternalLink,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getUserInitials } from "@/lib/utils";
 
 const BREADCRUMB_MAP: Record<string, string> = {
-  "/dashboard": "Vue d’ensemble",
+  "/dashboard": "Accueil",
   "/dashboard/equipements": "Équipements",
   "/dashboard/affectations": "Affectations",
-  "/dashboard/tickets": "Tickets",
+  "/dashboard/tickets": "Tickets d'assistance",
   "/dashboard/employes": "Employés",
   "/dashboard/services": "Services",
-  "/dashboard/rapports": "Rapports d'activité",
+  "/dashboard/rapports": "Rapports & Statistiques",
 };
 
+const QUICK_LINKS = [
+  { label: "Équipements", href: "/dashboard/equipements", icon: Laptop },
+  { label: "Affectations", href: "/dashboard/affectations", icon: Share2 },
+  { label: "Tickets d'assistance", href: "/dashboard/tickets", icon: LifeBuoy },
+  { label: "Collaborateurs", href: "/dashboard/employes", icon: Users },
+  { label: "Services", href: "/dashboard/services", icon: Building2 },
+  { label: "Rapports d'activité", href: "/dashboard/rapports", icon: BarChart3 },
+];
+
 export function Topbar({
-  onOpenMenu,
-  isMenuOpen,
+  isExpanded,
+  onToggleExpand,
 }: {
-  onOpenMenu: () => void;
-  isMenuOpen: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
   const router = useRouter();
-  const [userName, setUserName] = useState("Administrateur IT");
+  const pathname = usePathname();
+  const [userName, setUserName] = useState("Touba Gaz IT");
+  const [userRole, setUserRole] = useState("Admin");
 
   useEffect(() => {
+    // 1. Essai localStorage
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("touba_gaz_user");
       if (stored) {
         try {
           const user = JSON.parse(stored);
           if (user.nom) setUserName(user.nom);
+          if (user.role) {
+            setUserRole(user.role === "ADMIN" || user.role === "admin" ? "Administrateur IT" : "Collaborateur");
+          }
         } catch {
           // ignore
         }
       }
     }
+
+    // 2. Vérification session serveur via /api/auth/me
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data.user) {
+          if (data.user.nom) setUserName(data.user.nom);
+          if (data.user.role) {
+            setUserRole(data.user.role === "admin" ? "Administrateur IT" : "Collaborateur");
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -53,57 +102,98 @@ export function Topbar({
     router.push("/");
   };
 
+  const initials = getUserInitials(userName);
+
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#E2E8F0] bg-white px-4 sm:px-6 lg:px-8">
-      {/* Côté gauche : Breadcrumb & Menu Mobile */}
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
+      {/* Côté gauche : Bouton Chevron '>' toggle + Menu déroulant des Liens Rapides */}
+      <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={onOpenMenu}
-          aria-label="Ouvrir le menu"
-          aria-expanded={isMenuOpen}
-          aria-controls="primary-navigation"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 lg:hidden"
+          onClick={onToggleExpand}
+          className="flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
+          title={isExpanded ? "Réduire le menu" : "Déployer le menu"}
         >
-          <Menu className="h-5 w-5" aria-hidden="true" />
+          <ChevronRight
+            className={`size-4 transition-transform duration-200 ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+          />
         </button>
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="hidden text-slate-400 sm:inline">Touba Gaz</span>
-          <span className="hidden text-slate-300 sm:inline">/</span>
-          <Suspense fallback={<span className="text-slate-500">Espace IT</span>}>
-            <CurrentBreadcrumb />
-          </Suspense>
-        </div>
+
+        {/* 6. Liens Rapides fonctionnels (routes réelles uniquement) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="hidden md:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+            <Search className="size-3.5 text-slate-400" />
+            <span>Liens rapides...</span>
+            <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 ml-2">
+              Alt+K
+            </kbd>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56 p-1.5">
+            <DropdownMenuLabel className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+              Modules principaux
+            </DropdownMenuLabel>
+            {QUICK_LINKS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <DropdownMenuItem
+                  key={item.href}
+                  onClick={() => router.push(item.href)}
+                  className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium text-slate-700 hover:text-emerald-700 cursor-pointer rounded-lg"
+                >
+                  <Icon className="size-4 text-emerald-600" />
+                  <span>{item.label}</span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Côté droit : Profil Admin et Bouton Déconnexion */}
+      {/* Côté droit : Cloche notifications administrateur + Avatar circulaire de l'utilisateur connecté */}
       <div className="flex items-center gap-3">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-          <Shield className="h-3.5 w-3.5 text-emerald-600" />
-          <span className="text-slate-700 font-medium truncate max-w-[150px]">{userName}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
-            Admin
-          </span>
-        </div>
+        {/* Cloche de notifications IT (conservée pour l'administrateur) */}
+        <NotificationBell />
 
-        <Button
-          onClick={handleLogout}
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5 border-rose-200 bg-white text-rose-700 hover:bg-rose-50 hover:text-rose-800 shadow-2xs transition-colors"
-          title="Se déconnecter de la session"
-        >
-          <LogOut className="h-3.5 w-3.5 text-rose-600" />
-          <span className="text-xs font-semibold">Déconnexion</span>
-        </Button>
+        {/* 7. Avatar avec initiales dynamiques et menu profil */}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer">
+            <div
+              className="flex size-9 items-center justify-center rounded-full bg-emerald-100 font-bold text-xs text-emerald-800 ring-2 ring-emerald-200 hover:ring-emerald-400 transition-all cursor-pointer"
+              title={userName}
+            >
+              {initials}
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="end" className="w-56 p-1.5">
+            <DropdownMenuLabel className="p-2">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-slate-900 truncate">{userName}</span>
+                <span className="text-[11px] text-emerald-700 font-medium">{userRole} · Touba Gaz SA</span>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/dashboard")} className="text-xs cursor-pointer">
+              Tableau de bord
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/dashboard/equipements")} className="text-xs cursor-pointer">
+              Parc des équipements
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/dashboard/tickets")} className="text-xs cursor-pointer">
+              Tickets d'assistance
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="text-xs text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer flex items-center gap-2"
+            >
+              <LogOut className="size-3.5" />
+              <span>Se déconnecter</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );
-}
-
-function CurrentBreadcrumb() {
-  const pathname = usePathname();
-  const label = BREADCRUMB_MAP[pathname] || "Détail de l'élément";
-
-  return <span className="font-semibold text-slate-800 truncate">{label}</span>;
 }

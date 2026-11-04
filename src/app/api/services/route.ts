@@ -4,7 +4,6 @@ import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { requireAuth } from "@/lib/auth";
 
-
 export async function GET(req: Request) {
   try {
     const authResult = await requireAuth(req);
@@ -12,18 +11,29 @@ export async function GET(req: Request) {
       return authResult.errorResponse;
     }
 
-    const [rows] = await pool.query<RowDataPacket[]>(`
-      SELECT 
+    const { searchParams } = new URL(req.url);
+    const archiveParam = searchParams.get("archive");
+    const isArchive = archiveParam === "1" || archiveParam === "true";
+
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT 
         s.*,
         COUNT(DISTINCT e.id) as total_employes,
-        COUNT(DISTINCT a.id) as total_equipements
+        COUNT(DISTINCT eq.id) as total_equipements
       FROM services s
       LEFT JOIN employes e ON e.service_id = s.id AND e.actif = 1
-      LEFT JOIN affectations a ON a.service_id = s.id AND a.date_fin IS NULL
-      WHERE s.archive = 0
+      LEFT JOIN affectations a ON a.date_fin IS NULL AND (
+        a.service_id = s.id OR a.employe_id IN (
+          SELECT service_emp.id FROM employes service_emp
+          WHERE service_emp.service_id = s.id AND service_emp.actif = 1
+        )
+      )
+      LEFT JOIN equipements eq ON eq.id = a.equipement_id AND eq.archive = 0
+      WHERE s.archive = ?
       GROUP BY s.id
-      ORDER BY s.nom ASC
-    `);
+      ORDER BY s.nom ASC`,
+      [isArchive ? 1 : 0]
+    );
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {

@@ -3,7 +3,7 @@ import pool from "@/lib/db";
 import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { requireAuth } from "@/lib/auth";
-
+import { notifyAdmins, notifyTicketDemandeur } from "@/lib/notifications";
 
 export async function GET(
   req: Request,
@@ -55,7 +55,13 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: ticket });
+    const [attachments] = await pool.query<RowDataPacket[]>(
+      `SELECT id, original_name, mime_type, size_bytes
+       FROM ticket_attachments WHERE ticket_id = ? ORDER BY created_at ASC`,
+      [id]
+    );
+
+    return NextResponse.json({ success: true, data: { ...ticket, attachments } });
   } catch (error) {
     console.error("Erreur GET ticket id:", error);
     return NextResponse.json({ success: false, message: "Erreur serveur." }, { status: 500 });
@@ -79,7 +85,7 @@ export async function PUT(
 
     // Vérifier l'existence du ticket
     const [existing] = await pool.query<RowDataPacket[]>(
-      `SELECT id, statut, date_resolution, date_cloture FROM tickets WHERE id = ?`,
+      `SELECT id, numero, demandeur_id, statut, description, date_resolution, date_cloture FROM tickets WHERE id = ?`,
       [id]
     );
 
@@ -108,6 +114,9 @@ export async function PUT(
       if (!date_resolution) date_resolution = nowSql;
       date_cloture = nowSql;
     }
+
+    const ancienStatut = currentTicket.statut;
+    const statutChange = statut && statut !== ancienStatut;
 
     if (statut) {
       await pool.query<ResultSetHeader>(
@@ -154,6 +163,52 @@ export async function PUT(
           auteurId,
         ]
       );
+    }
+
+    // Notifications automatiques lors d'un changement de statut
+    if (statutChange) {
+      const STATUT_LABELS: Record<string, string> = {
+        nouveau: "Nouveau",
+        en_cours: "En cours de traitement",
+        en_attente: "En attente",
+        resolu: "Résolu",
+        cloture: "Clôturé",
+      };
+
+      const nouveauLabel = STATUT_LABELS[statut] || statut;
+      const ticketNum = currentTicket.numero ? `#${currentTicket.numero}` : id;
+
+      try {
+        // 1. Notifier l'employé demandeur
+        let msgEmploye = `Le statut de votre demande ${ticketNum} est passé à : ${nouveauLabel}.`;
+        if (statut === "en_cours") {
+          msgEmploye = `Votre demande ${ticketNum} a été prise en charge par l'équipe IT.`;
+        } else if (statut === "resolu") {
+          msgEmploye = `Bonne nouvelle ! Votre problème ${ticketNum} a été marqué comme résolu.`;
+        } else if (statut === "cloture") {
+          msgEmploye = `Votre ticket ${ticketNum} a été validé et clôturé.`;
+        }
+
+        await notifyTicketDemandeur({
+          demandeurId: currentTicket.demandeur_id,
+          ticketId: id,
+          titre: `Mise à jour Ticket ${ticketNum}`,
+          message: msgEmploye,
+          type: `ticket_${statut}`,
+          excludeUserId: session.id,
+        });
+
+        // 2. Notifier les administrateurs IT (si un autre compte ou statut critique/fermeture)
+        await notifyAdmins({
+          ticketId: id,
+          titre: `Statut modifié : Ticket ${ticketNum}`,
+          message: `Le ticket est passé à "${nouveauLabel}".`,
+          type: `ticket_${statut}`,
+          excludeUserId: session.id,
+        });
+      } catch (notifErr) {
+        console.error("Erreur lors de l'envoi des notifications:", notifErr);
+      }
     }
 
     return NextResponse.json({ success: true, message: "Ticket mis à jour avec succès." });

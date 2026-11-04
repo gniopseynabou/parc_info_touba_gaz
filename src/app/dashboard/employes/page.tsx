@@ -6,7 +6,6 @@ import {
   Users,
   Search,
   Plus,
-  RefreshCw,
   Building2,
   Mail,
   Phone,
@@ -297,25 +296,6 @@ export default function EmployesPage() {
               ))}
             </select>
 
-            <Button
-              type="submit"
-              size="sm"
-              variant="outline"
-              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
-            >
-              Filtrer
-            </Button>
-
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={loadData}
-              className="text-slate-500 hover:text-slate-900"
-              title="Rafraîchir"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
-            </Button>
           </div>
         </form>
       </Card>

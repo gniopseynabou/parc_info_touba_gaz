@@ -94,7 +94,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    let { type, marque, modele, numero_serie, date_achat, etat, localisation, description, archive } = body;
+    let { type, marque, modele, numero_serie, date_achat, etat, localisation, description, photo, archive } = body;
 
     if (etat === "reforme") {
       etat = "hors_service";
@@ -110,6 +110,7 @@ export async function PUT(
            etat = COALESCE(?, etat),
            localisation = COALESCE(?, localisation),
            description = COALESCE(?, description),
+           photo = CASE WHEN ? = 1 THEN ? ELSE photo END,
            archive = COALESCE(?, archive)
        WHERE id = ?`,
       [
@@ -121,6 +122,8 @@ export async function PUT(
         etat !== undefined ? etat : null,
         localisation !== undefined ? (localisation?.trim() || null) : null,
         description !== undefined ? (description?.trim() || null) : null,
+        photo !== undefined ? 1 : 0,
+        photo !== undefined ? (photo?.trim() || null) : null,
         archive !== undefined ? (archive ? 1 : 0) : null,
         id,
       ]

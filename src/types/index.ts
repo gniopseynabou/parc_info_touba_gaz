@@ -48,6 +48,7 @@ export interface Equipement {
   etat: EtatEquipement;
   localisation?: string | null;
   description?: string | null;
+  photo?: string | null;
   archive: boolean;
   affectation_actuelle?: string | null;
   service_id?: string | null;
@@ -93,8 +94,16 @@ export interface Ticket {
   date_cloture?: string | null;
   cree_par?: string | null;
   intervention?: Intervention | null;
+  attachments?: TicketAttachment[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface TicketAttachment {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
 }
 
 export interface Intervention {

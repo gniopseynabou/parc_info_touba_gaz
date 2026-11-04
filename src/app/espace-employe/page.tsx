@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   Laptop,
   LifeBuoy,
@@ -23,13 +24,12 @@ import {
   Printer,
   Smartphone,
   Server,
-  ArrowRight,
   Headphones,
   Check,
-  Tag,
   Hash,
   Sparkles,
   Info,
+  ImageIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,22 +45,30 @@ import {
 } from "@/lib/constants";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { PhotoAttachments } from "@/components/tickets/photo-attachments";
 
-interface EmployeSession {
-  id: string;
-  role: string;
-  employe_id: string;
-  nom: string;
+interface EmployeStats {
+  totalTickets: number;
+  ticketsEnCours: number;
+  ticketsResolus: number;
+  totalEquipementsPerso: number;
+  totalEquipementsService: number;
 }
 
 export default function EspaceEmployePage() {
   const router = useRouter();
-  const [session, setSession] = useState<EmployeSession | null>(null);
   const [employeData, setEmployeData] = useState<any>(null);
   const [equipements, setEquipements] = useState<any[]>([]);
   const [equipementsPerso, setEquipementsPerso] = useState<any[]>([]);
   const [equipementsService, setEquipementsService] = useState<any[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [stats, setStats] = useState<EmployeStats>({
+    totalTickets: 0,
+    ticketsEnCours: 0,
+    ticketsResolus: 0,
+    totalEquipementsPerso: 0,
+    totalEquipementsService: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"equipements" | "tickets" | "support">("equipements");
 
@@ -70,49 +78,65 @@ export default function EspaceEmployePage() {
   const [formDescription, setFormDescription] = useState("");
   const [formCategorie, setFormCategorie] = useState(CATEGORIES_TICKETS[0]);
   const [formEquipementId, setFormEquipementId] = useState("");
+  const [formPhotos, setFormPhotos] = useState<File[]>([]);
 
-  const loadEmployeData = async (empId: string) => {
+  // Chargement des données sécurisé côté serveur (basé sur la session cookie)
+  const loadEmployeData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/employe/me?employe_id=${empId}`);
+      const res = await fetch("/api/employe/me");
+      if (res.status === 401) {
+        toast.error("Session expirée. Veuillez vous reconnecter.");
+        router.push("/");
+        return;
+      }
+      if (res.status === 403) {
+        toast.error("Accès non autorisé à cet espace.");
+        router.push("/");
+        return;
+      }
+      if (res.status === 404) {
+        toast.error("Aucun profil employé actif rattaché à votre compte.");
+        setIsLoading(false);
+        return;
+      }
+
       const json = await res.json();
-      if (json.success) {
+      if (res.ok && json.success && json.data) {
         setEmployeData(json.data.employe);
-        setEquipements(json.data.equipements || []);
-        setEquipementsPerso(json.data.equipements_personnels || []);
-        setEquipementsService(json.data.equipements_service || []);
+        const pers = json.data.equipements_personnels || [];
+        const srv = json.data.equipements_service || [];
+        setEquipementsPerso(pers);
+        setEquipementsService(srv);
+        setEquipements(json.data.equipements || [...pers, ...srv]);
         setTickets(json.data.tickets || []);
-        if (json.data.equipements && json.data.equipements.length > 0 && !formEquipementId) {
-          setFormEquipementId(json.data.equipements[0].id);
+        if (json.data.stats) {
+          setStats(json.data.stats);
+        } else {
+          const tList: Ticket[] = json.data.tickets || [];
+          setStats({
+            totalTickets: tList.length,
+            ticketsEnCours: tList.filter((t) => ["nouveau", "en_cours", "en_attente"].includes(t.statut)).length,
+            ticketsResolus: tList.filter((t) => ["resolu", "cloture"].includes(t.statut)).length,
+            totalEquipementsPerso: pers.length,
+            totalEquipementsService: srv.length,
+          });
         }
       } else {
-        toast.error("Impossible de charger votre espace collaborateur.");
+        toast.error(json.message || "Impossible de charger votre espace collaborateur.");
       }
-    } catch {
-      toast.error("Erreur serveur.");
+    } catch (err) {
+      console.error("Erreur chargement espace collaborateur:", err);
+      toast.error("Erreur de connexion au serveur.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const savedUser = typeof window !== "undefined" ? localStorage.getItem("touba_gaz_user") : null;
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        setSession(parsed);
-        const empId = parsed.employe_id || parsed.id;
-        const rawId = empId?.startsWith("EMP-") ? empId : parsed.employe_id;
-        loadEmployeData(rawId);
-        return;
-      } catch {
-        // ignore
-      }
-    }
-
-    toast.error("Veuillez vous connecter.");
-    router.push("/");
-  }, [router]);
+    loadEmployeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -123,7 +147,6 @@ export default function EspaceEmployePage() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("touba_gaz_user");
     }
-    document.cookie = "touba_gaz_session=; path=/; max-age=0";
     toast.success("Déconnexion réussie.");
     router.push("/");
   };
@@ -141,38 +164,36 @@ export default function EspaceEmployePage() {
       return;
     }
 
-    const empId = session?.employe_id || session?.id;
-    if (!empId) {
-      toast.error("Session invalide.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
+      // Création standard multipart/json
+      const payload = {
+        description: formDescription.trim(),
+        categorie: formCategorie,
+        canal: "application",
+        equipement_id: formEquipementId || null,
+      };
+
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          demandeur_id: empId,
-          description: formDescription,
-          categorie: formCategorie,
-          canal: "application",
-          equipement_id: formEquipementId || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
       if (res.ok && json.success) {
         const explicationMsg = json.priorite_explication
-          ? ` (${json.priorite_explication})`
+          ? ` (Priorité ${json.priorite} : ${json.priorite_explication})`
           : "";
         toast.success(`Votre demande d'assistance a été transmise à l'équipe IT !${explicationMsg}`);
         setIsModalOpen(false);
         setFormDescription("");
+        setFormPhotos([]);
+        setFormEquipementId("");
         setActiveTab("tickets");
-        loadEmployeData(empId);
+        loadEmployeData();
       } else {
-        toast.error(json.message || "Erreur lors de la création.");
+        toast.error(json.message || "Erreur lors de la création de la demande.");
       }
     } catch {
       toast.error("Erreur serveur.");
@@ -181,12 +202,8 @@ export default function EspaceEmployePage() {
     }
   };
 
-  // Statistiques rapides
-  const ticketsEnCours = tickets.filter((t) => t.statut === "en_cours" || t.statut === "nouveau" || t.statut === "en_attente").length;
-  const ticketsResolus = tickets.filter((t) => t.statut === "resolu" || t.statut === "cloture").length;
-
   const getEquipmentIcon = (type: string) => {
-    const t = type.toLowerCase();
+    const t = (type || "").toLowerCase();
     if (t.includes("portable") || t.includes("laptop")) return Laptop;
     if (t.includes("écran") || t.includes("moniteur") || t.includes("fixe")) return Monitor;
     if (t.includes("imprimante") || t.includes("scanner")) return Printer;
@@ -194,36 +211,46 @@ export default function EspaceEmployePage() {
     return Server;
   };
 
-  const initials = employeData ? `${employeData.prenom?.[0] || ""}${employeData.nom?.[0] || ""}`.toUpperCase() : "TG";
+  // Calcul dynamique des initiales à partir du prénom et du nom
+  const initials = useMemo(() => {
+    if (!employeData) return "TG";
+    const p = (employeData.prenom || "").trim().split(" ")[0]?.[0] || "";
+    const n = (employeData.nom || "").trim().split(" ")[0]?.[0] || "";
+    const res = `${p}${n}`.toUpperCase();
+    return res || "TG";
+  }, [employeData]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#17231B] flex flex-col font-sans">
       <Toaster position="top-right" richColors />
 
-      {/* Header Intranet Entreprise Touba Gaz */}
-      <header className="border-b border-[#E2E8F0] bg-white sticky top-0 z-40 px-4 sm:px-8 py-3.5 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 flex items-center justify-center">
+      {/* Barre supérieure adaptée mobile / tablette / desktop */}
+      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 flex items-center justify-center">
             <Flame className="h-5 w-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold tracking-wider text-slate-900">TOUBA GAZ SA</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                Portail Collaborateur
+              <span className="text-sm font-bold tracking-wider text-slate-900 truncate">TOUBA GAZ</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                Espace Collaborateur
               </span>
             </div>
-            <p className="text-[11px] text-slate-500">Direction des Systèmes d'Information & Assistance IT</p>
+            <p className="text-[11px] text-slate-500 hidden sm:block truncate">Gestion du parc informatique & assistance IT</p>
           </div>
         </div>
 
-        {/* Profil collaborateur & Déconnexion */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
-            <div className="h-9 w-9 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center ring-2 ring-white shadow-xs">
+        {/* Profil collaborateur & Déconnexion (pas de cloche de notifications pour les collaborateurs) */}
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="h-9 w-9 shrink-0 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center ring-2 ring-emerald-200 shadow-2xs"
+              title={`${employeData?.prenom || ""} ${employeData?.nom || ""}`}
+            >
               {initials}
             </div>
-            <div className="hidden sm:block text-left">
+            <div className="hidden md:block text-left">
               <p className="text-xs font-semibold text-slate-900 leading-tight">
                 {employeData?.prenom} {employeData?.nom}
               </p>
@@ -238,8 +265,8 @@ export default function EspaceEmployePage() {
             variant="outline"
             size="sm"
             onClick={handleLogout}
-            className="h-9 px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200 rounded-lg gap-1.5 transition-colors text-xs font-medium"
-            title="Se déconnecter de votre espace"
+            className="h-9 px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200 rounded-lg gap-1.5 transition-colors text-xs font-medium cursor-pointer"
+            title="Se déconnecter"
           >
             <LogOut className="h-4 w-4 text-rose-600" />
             <span className="hidden sm:inline">Quitter</span>
@@ -248,19 +275,19 @@ export default function EspaceEmployePage() {
       </header>
 
       {/* Contenu principal */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-8 space-y-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
         {/* Bannière de Bienvenue */}
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-[#E2E8F0] p-6 sm:p-7 shadow-xs">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                Session active • {employeData?.service_nom || "Service interne"}
+        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 p-5 sm:p-7 shadow-xs">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 relative z-10">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+                <Building2 className="h-3.5 w-3.5 text-emerald-600" />
+                {employeData?.service_nom || "Touba Gaz SA"}
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 tracking-tight">
                 Bienvenue, {employeData?.prenom || "Collaborateur"} !
-              </h2>
+              </h1>
               <p className="text-xs sm:text-sm text-slate-500 max-w-xl leading-relaxed">
                 Retrouvez l'inventaire de vos équipements de travail et déclarez vos demandes d'assistance informatique en direct à la DSI.
               </p>
@@ -269,53 +296,67 @@ export default function EspaceEmployePage() {
             <Button
               onClick={() => setIsModalOpen(true)}
               size="lg"
-              className="h-11 sm:h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 shrink-0 rounded-xl cursor-pointer"
+              className="h-11 sm:h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 shrink-0 rounded-xl cursor-pointer w-full sm:w-auto"
             >
               <Plus className="h-4 w-4" />
               Signaler un problème IT
             </Button>
           </div>
 
-          {/* 3 KPIs intégrés */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-6 mt-6 border-t border-slate-100 text-xs">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-              <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
-                <Laptop className="h-4 w-4" />
+          {/* 4 Cartes KPIs (Mes demandes, En cours, Résolues, Matériels affectés) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-5 mt-5 border-t border-slate-100">
+            {/* KPI 1 : Mes demandes */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-sky-50 text-sky-600 ring-1 ring-sky-200/60 shrink-0">
+                <LifeBuoy className="h-4 w-4" />
               </div>
-              <div>
-                <p className="text-slate-500 text-[11px] font-medium">Matériels en dotation</p>
-                <p className="text-lg font-bold text-slate-900">{equipements.length}</p>
+              <div className="min-w-0">
+                <p className="text-slate-500 text-[11px] font-medium truncate">Mes demandes</p>
+                <p className="text-lg sm:text-xl font-bold text-slate-900 tabular-nums">{stats.totalTickets}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-              <div className="p-2.5 rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-200/50">
+            {/* KPI 2 : Demandes en cours */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-200/60 shrink-0">
                 <Clock className="h-4 w-4" />
               </div>
-              <div>
-                <p className="text-slate-500 text-[11px] font-medium">Demandes en cours</p>
-                <p className="text-lg font-bold text-amber-700">{ticketsEnCours}</p>
+              <div className="min-w-0">
+                <p className="text-slate-500 text-[11px] font-medium truncate">Demandes en cours</p>
+                <p className="text-lg sm:text-xl font-bold text-amber-700 tabular-nums">{stats.ticketsEnCours}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-              <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50">
+            {/* KPI 3 : Demandes résolues */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 shrink-0">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
-              <div>
-                <p className="text-slate-500 text-[11px] font-medium">Demandes résolues</p>
-                <p className="text-lg font-bold text-emerald-700">{ticketsResolus}</p>
+              <div className="min-w-0">
+                <p className="text-slate-500 text-[11px] font-medium truncate">Demandes résolues</p>
+                <p className="text-lg sm:text-xl font-bold text-emerald-700 tabular-nums">{stats.ticketsResolus}</p>
+              </div>
+            </div>
+
+            {/* KPI 4 : Mes équipements affectés */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 shrink-0">
+                <Laptop className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-slate-500 text-[11px] font-medium truncate">Mes équipements</p>
+                <p className="text-lg sm:text-xl font-bold text-slate-900 tabular-nums">{stats.totalEquipementsPerso}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Barre de navigation par onglets épurés */}
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
+        {/* Barre de navigation par onglets épurés et scrollable sur mobile */}
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-1 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab("equipements")}
-            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer ${
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === "equipements"
                 ? "text-emerald-700 border-b-2 border-emerald-600 font-bold"
                 : "text-slate-500 hover:text-slate-900 font-medium"
@@ -324,14 +365,14 @@ export default function EspaceEmployePage() {
             <Laptop className="h-4 w-4" />
             Mes Équipements
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
-              {equipements.length}
+              {equipementsPerso.length}
             </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("tickets")}
-            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer ${
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === "tickets"
                 ? "text-emerald-700 border-b-2 border-emerald-600 font-bold"
                 : "text-slate-500 hover:text-slate-900 font-medium"
@@ -339,17 +380,15 @@ export default function EspaceEmployePage() {
           >
             <LifeBuoy className="h-4 w-4" />
             Mes Demandes d'Assistance
-            {ticketsEnCours > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
-                {ticketsEnCours}
-              </span>
-            )}
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+              {tickets.length}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("support")}
-            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer ${
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold transition-all relative flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === "support"
                 ? "text-emerald-700 border-b-2 border-emerald-600 font-bold"
                 : "text-slate-500 hover:text-slate-900 font-medium"
@@ -368,14 +407,14 @@ export default function EspaceEmployePage() {
                 <Loader2 className="h-7 w-7 animate-spin mx-auto text-emerald-600 mb-2" />
                 Chargement de vos équipements...
               </div>
-            ) : equipements.length === 0 ? (
+            ) : equipementsPerso.length === 0 && equipementsService.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center space-y-3 shadow-xs">
                 <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 mx-auto flex items-center justify-center">
                   <Laptop className="h-7 w-7" />
                 </div>
-                <h4 className="text-base font-bold text-slate-900">Aucun équipement personnel actuellement affecté</h4>
+                <h2 className="text-base font-bold text-slate-900">Aucun équipement personnel actuellement affecté</h2>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Si un matériel informatique (ordinateur, écran, téléphone) vous a été remis récemment, l'administrateur IT doit valider son affectation dans le système pour qu'il apparaisse ici.
+                  Si un matériel informatique (ordinateur portable, unité centrale, écran, téléphone) vous a été attribué, il apparaîtra ici dès validation par la DSI.
                 </p>
                 <div className="pt-2">
                   <Button
@@ -384,23 +423,23 @@ export default function EspaceEmployePage() {
                     size="sm"
                     className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                   >
-                    Demander une dotation de matériel
+                    Déclarer une demande de dotation
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Section 1 : Équipements individuels */}
+                {/* 1. Équipements personnels */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
                       <Laptop className="h-4 w-4 text-emerald-600" />
                       Équipements personnels en dotation ({equipementsPerso.length})
-                    </h3>
+                    </h2>
                   </div>
                   {equipementsPerso.length === 0 ? (
                     <p className="text-xs text-slate-400 italic bg-white p-4 rounded-xl border border-slate-200">
-                      Aucun équipement individuel direct. Vous bénéficiez des matériels partagés de votre service ci-dessous.
+                      Aucun équipement individuel direct actif. Vous avez accès aux équipements partagés de votre service ci-dessous.
                     </p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -412,29 +451,41 @@ export default function EspaceEmployePage() {
                             className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-emerald-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
                           >
                             <div className="space-y-3">
+                              {/* Photo si disponible */}
+                              {eq.photo && (
+                                <div className="relative h-36 w-full rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={eq.photo}
+                                    alt={`${eq.marque || ""} ${eq.modele || ""}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </div>
+                              )}
+
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
-                                  <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50 flex items-center justify-center">
+                                  <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/50 flex items-center justify-center shrink-0">
                                     <Icon className="h-5 w-5" />
                                   </div>
-                                  <div>
-                                    <span className="font-mono text-xs font-bold text-emerald-700 block">
+                                  <div className="min-w-0">
+                                    <span className="font-mono text-xs font-bold text-emerald-700 block truncate">
                                       {formatCodeEquipement(eq.code)}
                                     </span>
-                                    <span className="text-[11px] text-slate-500 font-medium">
+                                    <span className="text-[11px] text-slate-500 font-medium truncate block">
                                       {eq.type}
                                     </span>
                                   </div>
                                 </div>
-                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                                   Personnel
                                 </span>
                               </div>
 
                               <div>
-                                <h4 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                                <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
                                   {eq.marque} {eq.modele}
-                                </h4>
+                                </h3>
                                 {eq.description && (
                                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                                     {eq.description}
@@ -448,14 +499,14 @@ export default function EspaceEmployePage() {
                                     <Hash className="h-3 w-3 text-slate-400" />
                                     N° de Série :
                                   </span>
-                                  <span className="font-mono text-slate-800 font-semibold">
+                                  <span className="font-mono text-slate-800 font-semibold truncate max-w-[140px]">
                                     {eq.numero_serie || "Non renseigné"}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between text-slate-500">
                                   <span className="flex items-center gap-1.5">
                                     <Calendar className="h-3 w-3 text-slate-400" />
-                                    Attribué le :
+                                    Affecté le :
                                   </span>
                                   <span className="text-slate-800 font-medium">
                                     {formatDateFr(eq.affectation_date_debut)}
@@ -470,10 +521,10 @@ export default function EspaceEmployePage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenTicketForEquipement(eq.id)}
-                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors gap-1.5 font-medium"
+                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors gap-1.5 font-medium cursor-pointer"
                               >
                                 <AlertTriangle className="h-3 w-3 text-amber-600" />
-                                Signaler un souci sur ce matériel
+                                Signaler un problème sur ce matériel
                               </Button>
                             </div>
                           </div>
@@ -483,14 +534,14 @@ export default function EspaceEmployePage() {
                   )}
                 </div>
 
-                {/* Section 2 : Équipements partagés du service */}
+                {/* 2. Équipements partagés du service */}
                 {equipementsService.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-blue-600" />
                         Matériels communs du service {employeData?.service_nom || ""} ({equipementsService.length})
-                      </h3>
+                      </h2>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {equipementsService.map((eq: any) => {
@@ -501,29 +552,40 @@ export default function EspaceEmployePage() {
                             className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-blue-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
                           >
                             <div className="space-y-3">
+                              {eq.photo && (
+                                <div className="relative h-36 w-full rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={eq.photo}
+                                    alt={`${eq.marque || ""} ${eq.modele || ""}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </div>
+                              )}
+
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5">
-                                  <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-200/50 flex items-center justify-center">
+                                  <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-200/50 flex items-center justify-center shrink-0">
                                     <Icon className="h-5 w-5" />
                                   </div>
-                                  <div>
-                                    <span className="font-mono text-xs font-bold text-blue-700 block">
+                                  <div className="min-w-0">
+                                    <span className="font-mono text-xs font-bold text-blue-700 block truncate">
                                       {formatCodeEquipement(eq.code)}
                                     </span>
-                                    <span className="text-[11px] text-slate-500 font-medium">
+                                    <span className="text-[11px] text-slate-500 font-medium truncate block">
                                       {eq.type}
                                     </span>
                                   </div>
                                 </div>
-                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
                                   Partagé
                                 </span>
                               </div>
 
                               <div>
-                                <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                                <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
                                   {eq.marque} {eq.modele}
-                                </h4>
+                                </h3>
                                 {eq.description && (
                                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                                     {eq.description}
@@ -537,16 +599,16 @@ export default function EspaceEmployePage() {
                                     <Hash className="h-3 w-3 text-slate-400" />
                                     N° de Série :
                                   </span>
-                                  <span className="font-mono text-slate-800 font-semibold">
+                                  <span className="font-mono text-slate-800 font-semibold truncate max-w-[140px]">
                                     {eq.numero_serie || "Non renseigné"}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between text-slate-500">
                                   <span className="flex items-center gap-1.5">
                                     <Building2 className="h-3 w-3 text-slate-400" />
-                                    Département :
+                                    Service :
                                   </span>
-                                  <span className="text-slate-800 font-medium">
+                                  <span className="text-slate-800 font-medium truncate max-w-[140px]">
                                     {employeData?.service_nom || "Service commun"}
                                   </span>
                                 </div>
@@ -559,7 +621,7 @@ export default function EspaceEmployePage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenTicketForEquipement(eq.id)}
-                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-blue-300 hover:bg-blue-50/30 transition-colors gap-1.5 font-medium"
+                                className="w-full h-8 text-xs border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:border-blue-300 hover:bg-blue-50/30 transition-colors gap-1.5 font-medium cursor-pointer"
                               >
                                 <AlertTriangle className="h-3 w-3 text-amber-600" />
                                 Signaler un dysfonctionnement
@@ -579,16 +641,16 @@ export default function EspaceEmployePage() {
         {/* CONTENU DE L'ONGLET 2 : MES TICKETS */}
         {activeTab === "tickets" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Historique de vos signalements</h3>
+                <h2 className="text-sm font-bold text-slate-900">Historique de vos signalements</h2>
                 <p className="text-xs text-slate-500">Suivi des interventions techniques assurées par l'équipe informatique.</p>
               </div>
 
               <Button
                 size="sm"
                 onClick={() => setIsModalOpen(true)}
-                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+                className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 cursor-pointer w-full sm:w-auto"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Nouveau signalement
@@ -598,21 +660,21 @@ export default function EspaceEmployePage() {
             {isLoading ? (
               <div className="py-16 text-center text-slate-500">
                 <Loader2 className="h-7 w-7 animate-spin mx-auto text-emerald-600 mb-2" />
-                Chargement de vos tickets...
+                Chargement de vos demandes...
               </div>
             ) : tickets.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center space-y-3 shadow-xs">
                 <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 mx-auto flex items-center justify-center">
                   <LifeBuoy className="h-7 w-7" />
                 </div>
-                <h4 className="text-base font-bold text-slate-900">Aucun incident ou demande signalé</h4>
+                <h3 className="text-base font-bold text-slate-900">Aucun signalement enregistré</h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Tout fonctionne correctement ? En cas de panne d'écran, problème réseau, mot de passe ou imprimante, créez un ticket en quelques secondes.
+                  En cas de panne matérielle, problème réseau, incident applicatif ou messagerie, déclarez un ticket en quelques instants.
                 </p>
                 <div className="pt-2">
                   <Button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 gap-1.5 font-semibold"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 gap-1.5 font-semibold cursor-pointer"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Créer mon premier ticket
@@ -628,7 +690,7 @@ export default function EspaceEmployePage() {
                   };
                   const prioriteInfo = PRIORITES_TICKETS[t.priorite as keyof typeof PRIORITES_TICKETS] || {
                     label: t.priorite,
-                    badgeClass: "",
+                    badgeClass: "bg-slate-50 text-slate-600 border-slate-200",
                   };
 
                   return (
@@ -639,7 +701,7 @@ export default function EspaceEmployePage() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs font-bold text-emerald-700">
-                            {formatNumeroTicket(t.numero)}
+                            #{formatNumeroTicket(t.numero)}
                           </span>
                           <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
                             {t.categorie}
@@ -671,6 +733,27 @@ export default function EspaceEmployePage() {
                         {t.description}
                       </p>
 
+                      {t.attachments && t.attachments.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
+                          {t.attachments.map((photo: { id: string; original_name: string }) => (
+                            <a
+                              key={photo.id}
+                              href={`/api/tickets/${t.id}/attachments/${photo.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 group hover:border-emerald-300 transition-colors"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={`/api/tickets/${t.id}/attachments/${photo.id}`}
+                                alt={photo.original_name}
+                                className="h-24 w-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
                       {t.priorite_explication && (
                         <p className="text-[11px] text-slate-500 flex items-center gap-1.5 italic">
                           <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
@@ -678,12 +761,12 @@ export default function EspaceEmployePage() {
                         </p>
                       )}
 
-                      {/* Rapport de l'intervention technique si résolu */}
+                      {/* Rapport de l'intervention technique si existante */}
                       {t.intervention_actions && (
                         <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs space-y-1.5 mt-2">
                           <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
                             <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                            <span>Intervention réalisée par le service informatique :</span>
+                            <span>Intervention technique réalisée par l'équipe IT :</span>
                           </div>
                           <p className="text-slate-700 pl-5 leading-relaxed">
                             {t.intervention_actions}
@@ -711,7 +794,7 @@ export default function EspaceEmployePage() {
                 <Headphones className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-slate-900">Permanence Informatique & DSI</h4>
+                <h3 className="text-base font-bold text-slate-900">Support Informatique Touba Gaz</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   L'équipe informatique Touba Gaz vous accompagne du lundi au vendredi pour la résolution de vos incidents matériels et applicatifs.
                 </p>
@@ -719,15 +802,15 @@ export default function EspaceEmployePage() {
 
               <div className="space-y-2.5 pt-3 border-t border-slate-100 text-xs">
                 <div className="flex items-center gap-2.5 text-slate-700">
-                  <Phone className="h-4 w-4 text-emerald-600" />
+                  <Phone className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>Standard interne : <strong>Poste 102 / 105</strong></span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-700">
-                  <Mail className="h-4 w-4 text-emerald-600" />
+                  <Mail className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>E-mail direct : <strong>support.it@toubagaz.sn</strong></span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-700">
-                  <Clock className="h-4 w-4 text-emerald-600" />
+                  <Clock className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>Horaires : <strong>08h00 – 18h00 (Lun - Ven)</strong></span>
                 </div>
               </div>
@@ -738,9 +821,9 @@ export default function EspaceEmployePage() {
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-slate-900">Bonnes pratiques de sécurité</h4>
+                <h3 className="text-base font-bold text-slate-900">Bonnes pratiques de sécurité</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Rappels essentiels pour la préservation du parc informatique Touba Gaz.
+                  Règles essentielles pour la préservation du parc informatique et des données de Touba Gaz.
                 </p>
               </div>
 
@@ -767,8 +850,8 @@ export default function EspaceEmployePage() {
       {/* Modal Création Ticket Collaborateur */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
-          <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-xl my-8 rounded-2xl overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between pb-3.5 border-b border-slate-100 bg-slate-50/70">
+          <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-xl my-8 rounded-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <CardHeader className="flex flex-row items-center justify-between pb-3.5 border-b border-slate-100 bg-slate-50/70 shrink-0">
               <div>
                 <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <LifeBuoy className="h-4 w-4 text-emerald-600" />
@@ -781,21 +864,21 @@ export default function EspaceEmployePage() {
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </CardHeader>
 
-            <form onSubmit={handleCreateTicket}>
+            <form onSubmit={handleCreateTicket} className="flex-1 overflow-y-auto">
               <CardContent className="space-y-4 pt-4 text-xs">
                 {/* Information employé connecté */}
                 <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/60 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-emerald-900 font-semibold">
-                    <span className="h-2 w-2 rounded-full bg-emerald-600" />
-                    Demandeur : {employeData?.prenom} {employeData?.nom}
+                  <div className="flex items-center gap-2 text-emerald-900 font-semibold truncate">
+                    <span className="h-2 w-2 rounded-full bg-emerald-600 shrink-0" />
+                    <span>Demandeur : {employeData?.prenom} {employeData?.nom}</span>
                   </div>
-                  <span className="text-emerald-700 text-[11px] font-medium">
+                  <span className="text-emerald-700 text-[11px] font-medium shrink-0 ml-2">
                     {employeData?.service_nom || "Touba Gaz"}
                   </span>
                 </div>
@@ -819,15 +902,15 @@ export default function EspaceEmployePage() {
                   </select>
                 </div>
 
-                {/* Équipement concerné (filtré au périmètre de l'employé) */}
+                {/* Équipement concerné (propose UNIQUEMENT ses équipements affectés) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="eq" className="text-slate-700 font-semibold">
                     Équipement concerné
                   </Label>
-                  {equipements.length === 0 ? (
+                  {equipementsPerso.length === 0 && equipementsService.length === 0 ? (
                     <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-2">
                       <Info className="h-4 w-4 shrink-0 text-amber-600" />
-                      <span>Aucun matériel actuellement affecté à votre nom ou à votre service. Votre demande sera enregistrée en tant que demande générale.</span>
+                      <span>Aucun matériel actuellement rattaché à votre compte. Votre demande sera enregistrée comme demande générale.</span>
                     </div>
                   ) : (
                     <select
@@ -847,7 +930,7 @@ export default function EspaceEmployePage() {
                         </optgroup>
                       )}
                       {equipementsService.length > 0 && (
-                        <optgroup label={`Équipements communs du service ${employeData?.service_nom || ""}`}>
+                        <optgroup label={`Équipements communs de votre service (${employeData?.service_nom || ""})`}>
                           {equipementsService.map((eq: any) => (
                             <option key={eq.id} value={eq.id}>
                               [Partagé] {eq.type} — {eq.marque} {eq.modele} ({eq.numero_serie || "S/N inconnu"})
@@ -859,7 +942,7 @@ export default function EspaceEmployePage() {
                   )}
                 </div>
 
-                {/* Explication du calcul automatique de priorité (Item 4) */}
+                {/* Priorité calculée automatiquement */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-start gap-2.5">
                   <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
@@ -891,14 +974,14 @@ export default function EspaceEmployePage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsModalOpen(false)}
-                    className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
                   >
                     Annuler
                   </Button>
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs cursor-pointer"
                   >
                     {isSubmitting ? (
                       <>

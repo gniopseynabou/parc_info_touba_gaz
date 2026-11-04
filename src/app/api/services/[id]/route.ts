@@ -95,7 +95,17 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { nom, description } = body;
+    const { nom, description, archive } = body;
+
+    // Si on demande uniquement une modification du statut d'archivage (Désarchivage ou Archivage)
+    if (typeof archive !== "undefined") {
+      await pool.query<ResultSetHeader>(
+        `UPDATE services SET archive = ? WHERE id = ?`,
+        [archive ? 1 : 0, id]
+      );
+      const actionMsg = archive ? "Service archivé avec succès." : "Service désarchivé et réactivé avec succès.";
+      return NextResponse.json({ success: true, message: actionMsg });
+    }
 
     if (!nom || !nom.trim()) {
       return NextResponse.json({ success: false, message: "Le nom du service est requis." }, { status: 400 });
