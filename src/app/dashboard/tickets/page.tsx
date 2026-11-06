@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   LifeBuoy,
   Plus,
@@ -32,7 +32,6 @@ import {
   formatDateFr,
 } from "@/lib/constants";
 import { toast } from "sonner";
-import { PhotoAttachments } from "@/components/tickets/photo-attachments";
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -49,10 +48,8 @@ export default function TicketsPage() {
   const [formDemandeurId, setFormDemandeurId] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCategorie, setFormCategorie] = useState(CATEGORIES_TICKETS[0]);
-  const [formPriorite, setFormPriorite] = useState<string>("auto");
   const [formCanal, setFormCanal] = useState<CanalTicket>("application");
   const [formEquipementId, setFormEquipementId] = useState("");
-  const [formPhotos, setFormPhotos] = useState<File[]>([]);
 
   // Modal Traitement Ticket & Intervention unique
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
@@ -62,6 +59,54 @@ export default function TicketsPage() {
   const [intFin, setIntFin] = useState("");
   const [actionIntervention, setActionIntervention] = useState("");
   const [resultatIntervention, setResultatIntervention] = useState("");
+
+  // Trouver le demandeur sélectionné pour connaître son service_id
+  const selectedDemandeur = useMemo(() => {
+    return employes.find((emp) => emp.id === formDemandeurId) || null;
+  }, [employes, formDemandeurId]);
+
+  // Filtrer les équipements liés en fonction de l'employé demandeur sélectionné
+  // 1. Équipements personnels affectés directement à l'employé
+  // 2. Équipements communs affectés au service de l'employé
+  const filteredEquipements = useMemo(() => {
+    if (!formDemandeurId) {
+      return { personnels: [] as any[], deService: [] as any[], total: 0 };
+    }
+
+    const demandeurServiceId = selectedDemandeur?.service_id;
+
+    const personnels: any[] = [];
+    const deService: any[] = [];
+
+    equipements.forEach((eq: any) => {
+      if (eq.archive === 1 || eq.archive === true) return;
+
+      if (eq.employe_id === formDemandeurId) {
+        personnels.push(eq);
+      } else if (demandeurServiceId && (eq.direct_service_id === demandeurServiceId || eq.service_id === demandeurServiceId)) {
+        deService.push(eq);
+      }
+    });
+
+    return {
+      personnels,
+      deService,
+      total: personnels.length + deService.length,
+    };
+  }, [equipements, formDemandeurId, selectedDemandeur]);
+
+  // Si l'équipement sélectionné ne fait plus partie des équipements filtrés du demandeur, on le réinitialise
+  useEffect(() => {
+    if (formEquipementId) {
+      const allFilteredIds = [
+        ...filteredEquipements.personnels.map((e: any) => e.id),
+        ...filteredEquipements.deService.map((e: any) => e.id),
+      ];
+      if (!allFilteredIds.includes(formEquipementId)) {
+        setFormEquipementId("");
+      }
+    }
+  }, [formDemandeurId, filteredEquipements, formEquipementId]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -106,25 +151,23 @@ export default function TicketsPage() {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formDemandeurId || !formDescription.trim()) {
-      toast.error("Veuillez sélectionner un demandeur et décrire le problème.");
+    if (!formDemandeurId) {
+      toast.error("Veuillez sélectionner un employé demandeur.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const payload = new FormData();
-      payload.set("demandeur_id", formDemandeurId);
-      payload.set("description", formDescription);
-      payload.set("categorie", formCategorie);
-      payload.set("canal", formCanal);
-      payload.set("equipement_id", formEquipementId);
-      if (formPriorite !== "auto") payload.set("priorite", formPriorite);
-      formPhotos.forEach((photo) => payload.append("photos", photo));
-
       const res = await fetch("/api/tickets", {
         method: "POST",
-        body: payload,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          demandeur_id: formDemandeurId,
+          description: formDescription.trim(),
+          categorie: formCategorie,
+          canal: formCanal,
+          equipement_id: formEquipementId || null,
+        }),
       });
 
       const json = await res.json();
@@ -136,8 +179,6 @@ export default function TicketsPage() {
         setIsModalOpen(false);
         setFormDescription("");
         setFormEquipementId("");
-        setFormPhotos([]);
-        setFormPriorite("auto");
         loadData();
       } else {
         toast.error(json.message || "Erreur lors de la création du ticket.");
@@ -498,54 +539,56 @@ export default function TicketsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700">
-                    Priorité (Calcul automatique ou forçage)
-                  </Label>
-                  <select
-                    value={formPriorite}
-                    onChange={(e) => setFormPriorite(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
-                  >
-                    <option value="auto">⚡ Automatique (recommandé)</option>
-                    <option value="basse">Basse</option>
-                    <option value="normale">Normale</option>
-                    <option value="haute">Haute</option>
-                    <option value="critique">Critique</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700">Équipement lié (optionnel)</Label>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">Équipement lié (optionnel)</Label>
+                {!formDemandeurId ? (
+                  <p className="text-xs text-slate-400 italic">Veuillez d'abord sélectionner un demandeur.</p>
+                ) : filteredEquipements.total === 0 ? (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200/80 p-2.5 text-xs text-amber-800">
+                    Aucun équipement personnel ou de service affecté à {selectedDemandeur ? `${selectedDemandeur.prenom} ${selectedDemandeur.nom}` : "cet employé"}. La demande sera enregistrée sans matériel spécifique.
+                  </div>
+                ) : (
                   <select
                     value={formEquipementId}
                     onChange={(e) => setFormEquipementId(e.target.value)}
                     className="w-full h-10 rounded-lg bg-white border border-slate-200 px-3 text-sm text-slate-900 focus:border-emerald-600 shadow-xs"
                   >
                     <option value="">Aucun équipement spécifique</option>
-                    {equipements.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.type} • {e.marque} ({e.numero_serie || "S/N inconnu"})
-                      </option>
-                    ))}
+                    {filteredEquipements.personnels.length > 0 && (
+                      <optgroup label={`Équipements personnels (${filteredEquipements.personnels.length})`}>
+                        {filteredEquipements.personnels.map((e: any) => (
+                          <option key={e.id} value={e.id}>
+                            {e.type} • {e.marque} {e.modele} ({e.numero_serie || "S/N inconnu"})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {filteredEquipements.deService.length > 0 && (
+                      <optgroup label={`Équipements partagés du service ${selectedDemandeur?.service_nom || ""} (${filteredEquipements.deService.length})`}>
+                        {filteredEquipements.deService.map((e: any) => (
+                          <option key={e.id} value={e.id}>
+                            [Service] {e.type} • {e.marque} {e.modele} ({e.numero_serie || "S/N inconnu"})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
-                </div>
+                )}
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">Description détaillée du problème *</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-700">Description détaillée du problème</Label>
+                  <span className="text-[11px] text-slate-400 font-normal">Facultatif</span>
+                </div>
                 <textarea
-                  required
                   rows={3}
-                  placeholder="Circonstances, message d'erreur, urgence opérationnelle..."
+                  placeholder="Circonstances, message d'erreur, urgence opérationnelle (optionnel)..."
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
                   className="w-full rounded-lg bg-white border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
                 />
               </div>
-
-              <PhotoAttachments files={formPhotos} onChange={setFormPhotos} disabled={isSubmitting} />
 
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <Button

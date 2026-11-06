@@ -615,7 +615,7 @@ export default function AffectationsPage() {
               {cibleType === "employe" ? (
                 <>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Filtrer par département</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Département</Label>
                     <select
                       value={filterModalService}
                       onChange={(e) => setFilterModalService(e.target.value)}

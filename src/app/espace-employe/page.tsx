@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   Laptop,
   LifeBuoy,
@@ -29,7 +28,6 @@ import {
   Hash,
   Sparkles,
   Info,
-  ImageIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +43,6 @@ import {
 } from "@/lib/constants";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { PhotoAttachments } from "@/components/tickets/photo-attachments";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,7 +84,6 @@ export default function EspaceEmployePage() {
   const [formDescription, setFormDescription] = useState("");
   const [formCategorie, setFormCategorie] = useState(CATEGORIES_TICKETS[0]);
   const [formEquipementId, setFormEquipementId] = useState("");
-  const [formPhotos, setFormPhotos] = useState<File[]>([]);
 
   // Chargement des données sécurisé côté serveur (basé sur la session cookie)
   const loadEmployeData = async () => {
@@ -189,7 +185,6 @@ export default function EspaceEmployePage() {
         toast.success("Votre demande d'assistance a été transmise à l'équipe informatique. Vous pouvez suivre son avancement dans l'onglet « Mes Demandes ».");
         setIsModalOpen(false);
         setFormDescription("");
-        setFormPhotos([]);
         setFormEquipementId("");
         setActiveTab("tickets");
         loadEmployeData();
@@ -239,8 +234,8 @@ export default function EspaceEmployePage() {
           </div>
         </div>
 
-        {/* 3 & 4. Profil collaborateur interactif : Tooltip au survol + Menu déconnexion au clic */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* Profil collaborateur et bouton quitter / déconnexion directe */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger
               className="flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-slate-100 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 text-left"
@@ -285,6 +280,19 @@ export default function EspaceEmployePage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Bouton direct Quitter / Se déconnecter */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="h-9 px-3 border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 font-semibold gap-1.5 transition-colors cursor-pointer text-xs shrink-0"
+            title="Quitter l'espace collaborateur et se déconnecter"
+          >
+            <LogOut className="h-3.5 w-3.5 text-rose-600" />
+            <span className="hidden sm:inline">Quitter</span>
+          </Button>
         </div>
       </header>
 
@@ -865,6 +873,15 @@ export default function EspaceEmployePage() {
             <span>Gestion du parc informatique & assistance IT</span>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+            >
+              <LogOut className="h-3 w-3" />
+              Se déconnecter
+            </button>
+            <span className="text-slate-300">•</span>
             <span>© 2026 Touba Gaz — Tous droits réservés.</span>
             <span className="text-slate-300">•</span>
             <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">v2.1</span>

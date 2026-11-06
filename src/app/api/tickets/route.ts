@@ -81,8 +81,28 @@ export async function POST(req: Request) {
     }
     const session = authResult.user;
 
-    const body = await req.json();
-    let { demandeur_id, description, categorie, priorite, canal, equipement_id } = body;
+    const contentType = req.headers.get("content-type") || "";
+    let demandeur_id: string | null = null;
+    let description: string = "";
+    let categorie: string = "";
+    let canal: string = "application";
+    let equipement_id: string | null = null;
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      demandeur_id = (formData.get("demandeur_id") as string) || null;
+      description = (formData.get("description") as string) || "";
+      categorie = (formData.get("categorie") as string) || "";
+      canal = (formData.get("canal") as string) || "application";
+      equipement_id = (formData.get("equipement_id") as string) || null;
+    } else {
+      const body = await req.json();
+      demandeur_id = body.demandeur_id || null;
+      description = body.description || "";
+      categorie = body.categorie || "";
+      canal = body.canal || "application";
+      equipement_id = body.equipement_id || null;
+    }
 
     // Si l'utilisateur connecté est un employé, le demandeur est obligatoirement lui-même
     if (session.role === "employe") {
@@ -123,7 +143,7 @@ export async function POST(req: Request) {
       const [eqRows] = await pool.query<RowDataPacket[]>(
         `SELECT e.id, e.type, e.marque, e.modele, e.archive,
                 a.employe_id as aff_employe_id, a.service_id as aff_service_id
-         FROM equipements 
+         FROM equipements e
          LEFT JOIN affectations a ON a.equipement_id = e.id AND a.date_fin IS NULL
          WHERE e.id = ?`,
         [equipement_id]
@@ -157,13 +177,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // Calcul automatique de la priorité côté serveur (Item 4)
+    // Calcul automatique de la priorité côté serveur selon les règles métier
+    // L'employé ne peut pas choisir la priorité, et le formulaire d'assistance ne propose plus de priorité
     const priorityResult = computeTicketPriority({
       categorie,
       description: cleanDescription,
       equipementType,
-      isAdmin: session.role === "admin",
-      manualPriority: priorite,
     });
 
     const finalPriority = priorityResult.priorite;
@@ -237,8 +256,15 @@ export async function POST(req: Request) {
       priorite: finalPriority,
       priorite_explication: priorityExplication,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erreur POST tickets:", error);
-    return NextResponse.json({ success: false, message: "Erreur lors de la création du ticket." }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: error?.message || "Erreur lors de la création du ticket.",
+        errorDetail: process.env.NODE_ENV !== "production" ? String(error?.stack || error) : undefined,
+      },
+      { status: 500 }
+    );
   }
 }

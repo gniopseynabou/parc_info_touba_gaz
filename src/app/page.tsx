@@ -76,7 +76,7 @@ export default function LoginPage() {
       <div className="relative flex w-full flex-1 items-center justify-center px-4 py-8 sm:px-6">
         <div className="auth-layout relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 lg:max-w-5xl">
           {/* Panneau gauche : Présentation Touba Gaz */}
-          <section className="auth-brand flex flex-col justify-between border-b border-slate-200 bg-slate-50/70 p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
+          <section className="auth-brand flex flex-col justify-between border-b border-slate-200 bg-white p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 shadow-2xs">
                 <Flame className="h-5 w-5" aria-hidden="true" />

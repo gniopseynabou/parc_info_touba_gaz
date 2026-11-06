@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Printer,
   Calendar,
   Filter,
   CheckCircle2,
@@ -444,14 +443,7 @@ export default function RapportsPage() {
               )}
               Exporter PDF
             </Button>
-            <Button
-              onClick={() => window.print()}
-              variant="outline"
-              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-semibold shadow-2xs cursor-pointer gap-2"
-            >
-              <Printer className="size-4 text-slate-600" />
-              Imprimer
-            </Button>
+
           </div>
         </PageHeader>
 

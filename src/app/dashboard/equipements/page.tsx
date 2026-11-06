@@ -581,19 +581,6 @@ export default function EquipementsPage() {
               ))}
             </select>
 
-            {/* Filtre par État */}
-            <select
-              value={filterEtat}
-              onChange={(e) => setFilterEtat(e.target.value)}
-              className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
-            >
-              <option value="tous">Tous les états</option>
-              <option value="en_service">En service</option>
-              <option value="en_panne">En panne</option>
-              <option value="en_maintenance">En maintenance</option>
-              <option value="hors_service">Hors service</option>
-            </select>
-
             {(filterEtat !== "tous" || filterType !== "tous" || filterService !== "tous" || search) && (
               <Button
                 type="button"
