@@ -46,6 +46,15 @@ import {
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { PhotoAttachments } from "@/components/tickets/photo-attachments";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface EmployeStats {
   totalTickets: number;
@@ -159,14 +168,9 @@ export default function EspaceEmployePage() {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formDescription.trim()) {
-      toast.error("Veuillez décrire le problème rencontré.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      // Création standard multipart/json
+      // Création standard multipart/json (description facultative)
       const payload = {
         description: formDescription.trim(),
         categorie: formCategorie,
@@ -182,10 +186,7 @@ export default function EspaceEmployePage() {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        const explicationMsg = json.priorite_explication
-          ? ` (Priorité ${json.priorite} : ${json.priorite_explication})`
-          : "";
-        toast.success(`Votre demande d'assistance a été transmise à l'équipe IT !${explicationMsg}`);
+        toast.success("Votre demande d'assistance a été transmise à l'équipe informatique. Vous pouvez suivre son avancement dans l'onglet « Mes Demandes ».");
         setIsModalOpen(false);
         setFormDescription("");
         setFormPhotos([]);
@@ -233,44 +234,57 @@ export default function EspaceEmployePage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold tracking-wider text-slate-900 truncate">TOUBA GAZ</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
-                Espace Collaborateur
-              </span>
             </div>
             <p className="text-[11px] text-slate-500 hidden sm:block truncate">Gestion du parc informatique & assistance IT</p>
           </div>
         </div>
 
-        {/* Profil collaborateur & Déconnexion (pas de cloche de notifications pour les collaborateurs) */}
+        {/* 3 & 4. Profil collaborateur interactif : Tooltip au survol + Menu déconnexion au clic */}
         <div className="flex items-center gap-2 sm:gap-4">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="h-9 w-9 shrink-0 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center ring-2 ring-emerald-200 shadow-2xs"
-              title={`${employeData?.prenom || ""} ${employeData?.nom || ""}`}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-slate-100 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 text-left"
+              title={`${employeData?.prenom || ""} ${employeData?.nom || ""} — ${employeData?.poste || employeData?.service_nom || "Collaborateur"}`}
             >
-              {initials}
-            </div>
-            <div className="hidden md:block text-left">
-              <p className="text-xs font-semibold text-slate-900 leading-tight">
-                {employeData?.prenom} {employeData?.nom}
-              </p>
-              <p className="text-[11px] text-emerald-700 flex items-center gap-1 mt-0.5 font-medium">
-                <Building2 className="h-3 w-3" />
-                {employeData?.service_nom || "Touba Gaz SA"}
-              </p>
-            </div>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLogout}
-            className="h-9 px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200 rounded-lg gap-1.5 transition-colors text-xs font-medium cursor-pointer"
-            title="Se déconnecter"
-          >
-            <LogOut className="h-4 w-4 text-rose-600" />
-            <span className="hidden sm:inline">Quitter</span>
-          </Button>
+              <div
+                className="h-9 w-9 shrink-0 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center ring-2 ring-emerald-200 shadow-2xs hover:ring-emerald-400 transition-all"
+              >
+                {initials}
+              </div>
+              <div className="hidden md:block text-left pr-1">
+                <p className="text-xs font-semibold text-slate-900 leading-tight">
+                  {employeData?.prenom} {employeData?.nom}
+                </p>
+                <p className="text-[11px] text-emerald-700 flex items-center gap-1 mt-0.5 font-medium">
+                  <Building2 className="h-3 w-3" />
+                  {employeData?.poste || employeData?.service_nom || "Collaborateur"}
+                </p>
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end" className="w-60 p-1.5 shadow-lg">
+              <DropdownMenuLabel className="p-2.5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-900">
+                    {employeData?.prenom} {employeData?.nom}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                    {employeData?.poste || "Collaborateur"}
+                  </span>
+                  <span className="text-[10px] text-slate-400 truncate mt-0.5">
+                    {employeData?.service_nom ? `Service : ${employeData.service_nom}` : "Touba Gaz S.A."}
+                  </span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-xs text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer flex items-center gap-2 p-2 rounded-lg font-medium"
+              >
+                <LogOut className="size-4 text-rose-600" />
+                <span>Se déconnecter</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -754,12 +768,7 @@ export default function EspaceEmployePage() {
                         </div>
                       )}
 
-                      {t.priorite_explication && (
-                        <p className="text-[11px] text-slate-500 flex items-center gap-1.5 italic">
-                          <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
-                          <span>{t.priorite_explication}</span>
-                        </p>
-                      )}
+
 
                       {/* Rapport de l'intervention technique si existante */}
                       {t.intervention_actions && (
@@ -846,6 +855,22 @@ export default function EspaceEmployePage() {
         )}
 
       </main>
+
+      {/* 5. Footer professionnel discret exclusif à l'espace collaborateur */}
+      <footer className="border-t border-slate-200 bg-white py-4 px-4 sm:px-6 lg:px-8 mt-auto">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-800">Touba Gaz</span>
+            <span className="text-slate-300">•</span>
+            <span>Gestion du parc informatique & assistance IT</span>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span>© 2026 Touba Gaz — Tous droits réservés.</span>
+            <span className="text-slate-300">•</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">v2.1</span>
+          </div>
+        </div>
+      </footer>
 
       {/* Modal Création Ticket Collaborateur */}
       {isModalOpen && (
@@ -942,27 +967,18 @@ export default function EspaceEmployePage() {
                   )}
                 </div>
 
-                {/* Priorité calculée automatiquement */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-start gap-2.5">
-                  <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-slate-900 block text-xs">Priorité déterminée automatiquement</span>
-                    <span className="text-[11px] text-slate-500 leading-relaxed block mt-0.5">
-                      Le degré d'urgence (Basse, Normale, Haute, Critique) est calculé par le système selon la nature de la panne et la criticité du matériel.
-                    </span>
-                  </div>
-                </div>
-
-                {/* Description détaillée */}
+                {/* Description détaillée (facultative) */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="desc" className="text-slate-700 font-semibold">
-                    Description du problème rencontré *
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="desc" className="text-slate-700 font-semibold">
+                      Description du problème
+                    </Label>
+                    <span className="text-[11px] text-slate-400 font-normal">Facultatif</span>
+                  </div>
                   <textarea
                     id="desc"
-                    required
                     rows={4}
-                    placeholder="Précisez les circonstances de la panne, les messages d'erreur affichés et le niveau d'impact sur votre travail..."
+                    placeholder="Précisez les circonstances de la panne, les messages d'erreur affichés ou le niveau d'impact (optionnel)..."
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
                     className="w-full rounded-xl bg-white border border-slate-200 p-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-xs"

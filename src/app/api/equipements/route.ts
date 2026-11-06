@@ -82,13 +82,35 @@ export async function GET(req: Request) {
 
     const [rows] = await pool.query<RowDataPacket[]>(query, params);
 
+    // Calcul des statistiques globales fixes (indépendantes des filtres appliqués à la liste)
+    const [statsRows] = await pool.query<RowDataPacket[]>(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN etat = 'en_service' THEN 1 ELSE 0 END) as en_service,
+        SUM(CASE WHEN etat = 'en_panne' OR etat = 'en_maintenance' THEN 1 ELSE 0 END) as en_panne,
+        SUM(CASE WHEN etat = 'hors_service' OR etat = 'reforme' THEN 1 ELSE 0 END) as hors_service
+      FROM equipements
+      WHERE archive = 0
+    `);
+
+    const globalStats = {
+      total: Number(statsRows[0]?.total || 0),
+      enService: Number(statsRows[0]?.en_service || 0),
+      enPanne: Number(statsRows[0]?.en_panne || 0),
+      horsService: Number(statsRows[0]?.hors_service || 0),
+    };
+
     // Normaliser l'état 'reforme' vers 'hors_service' pour le frontend
     const sanitizedRows = rows.map((row) => ({
       ...row,
       etat: row.etat === "reforme" ? "hors_service" : row.etat,
     }));
 
-    return NextResponse.json({ success: true, data: sanitizedRows });
+    return NextResponse.json({
+      success: true,
+      data: sanitizedRows,
+      stats: globalStats,
+    });
   } catch (error) {
     console.error("Erreur GET equipements:", error);
     return NextResponse.json(

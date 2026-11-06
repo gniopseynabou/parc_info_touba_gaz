@@ -30,6 +30,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   STATUTS_TICKETS,
   PRIORITES_TICKETS,
+  CATEGORIES_TICKETS,
   formatNumeroTicket,
   formatDateFr,
 } from "@/lib/constants";
@@ -75,16 +76,21 @@ export default function RapportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-  // Filtres compacts regroupés par catégorie
+  // Filtres compacts
   const [periodePreset, setPeriodePreset] = useState<string>("mois");
   const [dateDebut, setDateDebut] = useState<string>("");
   const [dateFin, setDateFin] = useState<string>("");
   const [selectedService, setSelectedService] = useState<string>("tous");
+  const [selectedStatut, setSelectedStatut] = useState<string>("tous");
+  const [selectedCategorie, setSelectedCategorie] = useState<string>("tous");
+
+  // Filtres avancés (repliés par défaut)
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [selectedEmploye, setSelectedEmploye] = useState<string>("tous");
+  const [selectedPriorite, setSelectedPriorite] = useState<string>("tous");
   const [selectedTypeEquipement, setSelectedTypeEquipement] = useState<string>("tous");
   const [selectedEtatEquipement, setSelectedEtatEquipement] = useState<string>("tous");
-  const [selectedStatut, setSelectedStatut] = useState<string>("tous");
-  const [selectedPriorite, setSelectedPriorite] = useState<string>("tous");
+
   const [activeTab, setActiveTab] = useState<"tout" | "demandes_interventions" | "graphiques">("tout");
   const [editionDate, setEditionDate] = useState<string>("");
 
@@ -100,29 +106,49 @@ export default function RapportsPage() {
     );
   }, []);
 
-  // Déterminer les dates par défaut selon le preset
+  // Déterminer les dates par défaut selon le preset (Aujourd'hui, Cette semaine, Ce mois, Ce trimestre, Cette année, etc.)
   useEffect(() => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-    if (periodePreset === "mois") {
+    if (periodePreset === "aujourdhui") {
+      setDateDebut(todayStr);
+      setDateFin(todayStr);
+    } else if (periodePreset === "semaine") {
+      const currentDay = now.getDay();
+      const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      setDateDebut(`${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`);
+      setDateFin(`${sunday.getFullYear()}-${pad(sunday.getMonth() + 1)}-${pad(sunday.getDate())}`);
+    } else if (periodePreset === "mois") {
       const firstDay = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
       const lastDay = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
         new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
       )}`;
       setDateDebut(firstDay);
       setDateFin(lastDay);
-    } else if (periodePreset === "mois_dernier") {
-      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const firstDay = `${prevMonth.getFullYear()}-${pad(prevMonth.getMonth() + 1)}-01`;
-      const lastDay = `${prevMonth.getFullYear()}-${pad(
-        prevMonth.getMonth() + 1
-      )}-${pad(new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0).getDate())}`;
+    } else if (periodePreset === "trimestre") {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const startMonth = currentQuarter * 3;
+      const endMonth = startMonth + 2;
+      const firstDay = `${now.getFullYear()}-${pad(startMonth + 1)}-01`;
+      const lastDay = `${now.getFullYear()}-${pad(endMonth + 1)}-${pad(
+        new Date(now.getFullYear(), endMonth + 1, 0).getDate()
+      )}`;
       setDateDebut(firstDay);
       setDateFin(lastDay);
     } else if (periodePreset === "annee") {
       setDateDebut(`${now.getFullYear()}-01-01`);
       setDateFin(`${now.getFullYear()}-12-31`);
+    } else if (periodePreset === "mois_precedent") {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateDebut(`${firstDay.getFullYear()}-${pad(firstDay.getMonth() + 1)}-${pad(firstDay.getDate())}`);
+      setDateFin(`${lastDay.getFullYear()}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`);
     } else if (periodePreset === "tous") {
       setDateDebut("");
       setDateFin("");
@@ -180,6 +206,7 @@ export default function RapportsPage() {
       if (selectedEtatEquipement !== "tous") params.append("etat_equipement", selectedEtatEquipement);
       if (selectedStatut !== "tous") params.append("statut", selectedStatut);
       if (selectedPriorite !== "tous") params.append("priorite", selectedPriorite);
+      if (selectedCategorie !== "tous") params.append("categorie", selectedCategorie);
 
       const res = await fetch(`/api/rapports?${params.toString()}`);
       const json = await res.json();
@@ -207,17 +234,26 @@ export default function RapportsPage() {
     selectedEtatEquipement,
     selectedStatut,
     selectedPriorite,
+    selectedCategorie,
   ]);
 
   const handleResetFilters = () => {
     setPeriodePreset("mois");
     setSelectedService("tous");
+    setSelectedStatut("tous");
+    setSelectedCategorie("tous");
     setSelectedEmploye("tous");
     setSelectedTypeEquipement("tous");
     setSelectedEtatEquipement("tous");
-    setSelectedStatut("tous");
     setSelectedPriorite("tous");
   };
+
+  const activeAdvancedCount = [
+    selectedEmploye !== "tous",
+    selectedPriorite !== "tous",
+    selectedTypeEquipement !== "tous",
+    selectedEtatEquipement !== "tous",
+  ].filter(Boolean).length;
 
   const formatDuree = (minutes?: number) => {
     if (!minutes || minutes <= 0) return "0 min";
@@ -262,6 +298,7 @@ export default function RapportsPage() {
           fin: dateFin ? formatDateFr(dateFin) : "",
           filtresTexte: [
             serviceName,
+            selectedCategorie !== "tous" ? `Catégorie: ${selectedCategorie}` : "",
             selectedTypeEquipement !== "tous" ? selectedTypeEquipement : "",
             selectedStatut !== "tous" ? `Statut: ${selectedStatut}` : "",
           ]
@@ -418,187 +455,230 @@ export default function RapportsPage() {
           </div>
         </PageHeader>
 
-        {/* 8.1 Panneau de filtres regroupés et compacts */}
+        {/* Panneau de filtres compact & épuré (Items 7, 8 & 11) */}
         <Card className="border border-slate-200 bg-white shadow-xs">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-800">
                 <Filter className="size-3.5 text-emerald-600" />
-                Filtres du rapport
+                <span>Filtres du rapport</span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleResetFilters}
-                className="h-7 text-xs text-slate-500 hover:text-slate-800 gap-1.5"
+                className="h-7 text-xs text-slate-500 hover:text-slate-800 gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="size-3" />
                 Réinitialiser
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {/* GROUPE 1 : PÉRIODE */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                  <Calendar className="size-3.5 text-emerald-600" />
-                  <span>Période</span>
+            {/* 8. Bloc principal compact : 4 filtres essentiels [ Période ] [ Service ] [ Statut ] [ Catégorie ] */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Filtre 1 — Période */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                  Période
+                </label>
+                <select
+                  value={periodePreset}
+                  onChange={(e) => setPeriodePreset(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none shadow-2xs"
+                >
+                  <option value="mois">Ce mois</option>
+                  <option value="aujourdhui">Aujourd'hui</option>
+                  <option value="semaine">Cette semaine</option>
+                  <option value="trimestre">Ce trimestre</option>
+                  <option value="annee">Cette année</option>
+                  <option value="tous">Tout l'historique</option>
+                  <option value="personnalise">Période personnalisée...</option>
+                </select>
+              </div>
+
+              {/* Filtre 2 — Service */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                  Service
+                </label>
+                <select
+                  value={selectedService}
+                  onChange={(e) => {
+                    setSelectedService(e.target.value);
+                    setSelectedEmploye("tous");
+                  }}
+                  className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none shadow-2xs"
+                >
+                  <option value="tous">Tous les services</option>
+                  {services.map((srv) => (
+                    <option key={srv.id} value={srv.id}>
+                      {srv.nom}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtre 3 — Statut */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                  Statut
+                </label>
+                <select
+                  value={selectedStatut}
+                  onChange={(e) => setSelectedStatut(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none shadow-2xs"
+                >
+                  <option value="tous">Tous les statuts</option>
+                  <option value="nouveau">Nouveau</option>
+                  <option value="en_cours">En cours</option>
+                  <option value="en_attente">En attente</option>
+                  <option value="resolu">Résolu</option>
+                  <option value="cloture">Clôturé</option>
+                </select>
+              </div>
+
+              {/* Filtre 4 — Catégorie */}
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                  Catégorie
+                </label>
+                <select
+                  value={selectedCategorie}
+                  onChange={(e) => setSelectedCategorie(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none shadow-2xs"
+                >
+                  <option value="tous">Toutes les catégories</option>
+                  {CATEGORIES_TICKETS.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Plage de dates personnalisée : s'ouvre UNIQUEMENT si sélectionnée */}
+            {periodePreset === "personnalise" && (
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-center gap-2.5">
+                <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                  Dates personnalisées :
+                </span>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="date"
+                    value={dateDebut}
+                    onChange={(e) => setDateDebut(e.target.value)}
+                    className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                  />
+                  <span className="text-slate-400 text-xs font-medium">→</span>
+                  <input
+                    type="date"
+                    value={dateFin}
+                    onChange={(e) => setDateFin(e.target.value)}
+                    className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                  />
                 </div>
-                <div>
-                  <select
-                    value={periodePreset}
-                    onChange={(e) => setPeriodePreset(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="mois">Mois en cours</option>
-                    <option value="mois_dernier">Mois précédent</option>
-                    <option value="annee">Année en cours</option>
-                    <option value="personnalise">Dates personnalisées</option>
-                    <option value="tous">Tout l'historique</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+              </div>
+            )}
+
+            {/* Bouton pour déplier les Filtres avancés (fermés par défaut) */}
+            <div className="pt-0.5">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 cursor-pointer transition-colors"
+              >
+                <span>Filtres avancés</span>
+                {showAdvancedFilters ? (
+                  <ChevronUp className="size-3.5" />
+                ) : (
+                  <ChevronDown className="size-3.5" />
+                )}
+                {activeAdvancedCount > 0 && (
+                  <span className="ml-1 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold">
+                    {activeAdvancedCount} actif{activeAdvancedCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </button>
+
+              {/* Filtres avancés (Repliés par défaut) */}
+              {showAdvancedFilters && (
+                <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Employé / Demandeur */}
                   <div>
-                    <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Du</label>
-                    <input
-                      type="date"
-                      value={dateDebut}
-                      onChange={(e) => {
-                        setPeriodePreset("personnalise");
-                        setDateDebut(e.target.value);
-                      }}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                    />
+                    <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                      Employé / Demandeur
+                    </label>
+                    <select
+                      value={selectedEmploye}
+                      onChange={(e) => setSelectedEmploye(e.target.value)}
+                      className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                    >
+                      <option value="tous">Tous les employés</option>
+                      {employes.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.prenom} {emp.nom}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+
+                  {/* Priorité */}
                   <div>
-                    <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Au</label>
-                    <input
-                      type="date"
-                      value={dateFin}
-                      onChange={(e) => {
-                        setPeriodePreset("personnalise");
-                        setDateFin(e.target.value);
-                      }}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                    />
+                    <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                      Priorité
+                    </label>
+                    <select
+                      value={selectedPriorite}
+                      onChange={(e) => setSelectedPriorite(e.target.value)}
+                      className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                    >
+                      <option value="tous">Toutes les priorités</option>
+                      <option value="basse">Basse</option>
+                      <option value="normale">Normale</option>
+                      <option value="haute">Haute</option>
+                      <option value="critique">Critique</option>
+                    </select>
+                  </div>
+
+                  {/* Type matériel */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                      Type de matériel
+                    </label>
+                    <select
+                      value={selectedTypeEquipement}
+                      onChange={(e) => setSelectedTypeEquipement(e.target.value)}
+                      className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                    >
+                      <option value="tous">Tous les types</option>
+                      {typesEquipements.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* État matériel */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 mb-1 block">
+                      État du matériel
+                    </label>
+                    <select
+                      value={selectedEtatEquipement}
+                      onChange={(e) => setSelectedEtatEquipement(e.target.value)}
+                      className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 focus:border-emerald-600 outline-none"
+                    >
+                      <option value="tous">Tous les états</option>
+                      <option value="en_service">En service</option>
+                      <option value="en_panne">En panne</option>
+                      <option value="en_maintenance">En maintenance</option>
+                      <option value="hors_service">Hors service</option>
+                    </select>
                   </div>
                 </div>
-              </div>
-
-              {/* GROUPE 2 : ORGANISATION */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                  <Building2 className="size-3.5 text-emerald-600" />
-                  <span>Organisation</span>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Service / Département</label>
-                  <select
-                    value={selectedService}
-                    onChange={(e) => {
-                      setSelectedService(e.target.value);
-                      setSelectedEmploye("tous");
-                    }}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Tous les services</option>
-                    {services.map((srv) => (
-                      <option key={srv.id} value={srv.id}>
-                        {srv.nom}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Employé / Demandeur</label>
-                  <select
-                    value={selectedEmploye}
-                    onChange={(e) => setSelectedEmploye(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Tous les employés</option>
-                    {employes.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.prenom} {emp.nom}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* GROUPE 3 : ÉQUIPEMENTS */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                  <Laptop className="size-3.5 text-emerald-600" />
-                  <span>Équipements</span>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Type de matériel</label>
-                  <select
-                    value={selectedTypeEquipement}
-                    onChange={(e) => setSelectedTypeEquipement(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Tous les types</option>
-                    {typesEquipements.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">État du matériel</label>
-                  <select
-                    value={selectedEtatEquipement}
-                    onChange={(e) => setSelectedEtatEquipement(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Tous les états</option>
-                    <option value="en_service">En service</option>
-                    <option value="en_panne">En panne</option>
-                    <option value="en_maintenance">En maintenance</option>
-                    <option value="hors_service">Hors service</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* GROUPE 4 : ASSISTANCE */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                  <Wrench className="size-3.5 text-emerald-600" />
-                  <span>Assistance IT</span>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Statut du ticket</label>
-                  <select
-                    value={selectedStatut}
-                    onChange={(e) => setSelectedStatut(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Tous les statuts</option>
-                    <option value="nouveau">Nouveau</option>
-                    <option value="en_cours">En cours</option>
-                    <option value="en_attente">En attente</option>
-                    <option value="resolu">Résolu</option>
-                    <option value="cloture">Clôturé</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-slate-500 block mb-0.5">Priorité</label>
-                  <select
-                    value={selectedPriorite}
-                    onChange={(e) => setSelectedPriorite(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-600 focus:outline-none shadow-2xs"
-                  >
-                    <option value="tous">Toutes les priorités</option>
-                    <option value="basse">Basse</option>
-                    <option value="normale">Normale</option>
-                    <option value="haute">Haute</option>
-                    <option value="critique">Critique</option>
-                  </select>
-                </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>

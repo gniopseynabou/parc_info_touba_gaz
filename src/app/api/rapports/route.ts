@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     const etatEquipement = searchParams.get("etat_equipement");
     const statut = searchParams.get("statut");
     const priorite = searchParams.get("priorite");
+    const categorie = searchParams.get("categorie");
 
     // 1. Récupération des interventions sur la période
     let queryInterventions = `
@@ -86,6 +87,10 @@ export async function GET(req: Request) {
       queryInterventions += ` AND t.priorite = ?`;
       paramsInt.push(priorite);
     }
+    if (categorie && categorie !== "tous") {
+      queryInterventions += ` AND t.categorie = ?`;
+      paramsInt.push(categorie);
+    }
 
     queryInterventions += ` ORDER BY i.debut DESC`;
     const [interventions] = await pool.query<RowDataPacket[]>(queryInterventions, paramsInt);
@@ -146,6 +151,10 @@ export async function GET(req: Request) {
     if (priorite && priorite !== "tous") {
       queryTickets += ` AND t.priorite = ?`;
       paramsTck.push(priorite);
+    }
+    if (categorie && categorie !== "tous") {
+      queryTickets += ` AND t.categorie = ?`;
+      paramsTck.push(categorie);
     }
 
     queryTickets += ` ORDER BY t.created_at DESC`;

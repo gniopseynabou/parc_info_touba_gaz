@@ -90,12 +90,14 @@ export async function POST(req: Request) {
       canal = "application";
     }
 
-    if (!demandeur_id || !description?.trim() || !categorie) {
+    if (!demandeur_id || !categorie) {
       return NextResponse.json(
-        { success: false, message: "Demandeur, description et catégorie sont obligatoires." },
+        { success: false, message: "Demandeur et catégorie sont obligatoires." },
         { status: 400 }
       );
     }
+
+    const cleanDescription = (description || "").trim();
 
     // Récupérer l'employé et son service
     const [empRows] = await pool.query<RowDataPacket[]>(
@@ -158,7 +160,7 @@ export async function POST(req: Request) {
     // Calcul automatique de la priorité côté serveur (Item 4)
     const priorityResult = computeTicketPriority({
       categorie,
-      description: description.trim(),
+      description: cleanDescription,
       equipementType,
       isAdmin: session.role === "admin",
       manualPriority: priorite,
@@ -179,7 +181,7 @@ export async function POST(req: Request) {
           id,
           realEmployeId,
           service_id,
-          description.trim(),
+          cleanDescription,
           categorie,
           finalPriority,
           priorityExplication,
@@ -199,7 +201,7 @@ export async function POST(req: Request) {
             id,
             realEmployeId,
             service_id,
-            description.trim(),
+            cleanDescription,
             categorie,
             finalPriority,
             canal || "application",
@@ -216,10 +218,11 @@ export async function POST(req: Request) {
     try {
       const demandeurNom = `${employe.prenom || ""} ${employe.nom || ""}`.trim() || "Un employé";
       const canalLabel = canal ? ` (${canal})` : "";
+      const descSnippet = cleanDescription ? ` : "${cleanDescription.slice(0, 100)}${cleanDescription.length > 100 ? "..." : ""}"` : "";
       await notifyAdmins({
         ticketId: id,
         titre: `Nouvelle demande d'assistance${canalLabel}`,
-        message: `${demandeurNom} a soumis une demande : "${description.trim().slice(0, 100)}${description.trim().length > 100 ? "..." : ""}"`,
+        message: `${demandeurNom} a soumis une demande (${categorie})${descSnippet}`,
         type: "ticket_cree",
         excludeUserId: session.role === "admin" ? session.id : undefined,
       });

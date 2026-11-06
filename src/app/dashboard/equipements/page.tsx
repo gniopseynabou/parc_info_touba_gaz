@@ -40,6 +40,12 @@ export default function EquipementsPage() {
   const [filterType, setFilterType] = useState<string>("tous");
   const [filterService, setFilterService] = useState<string>("tous");
   const [showServicesOverview, setShowServicesOverview] = useState(false);
+  const [globalStats, setGlobalStats] = useState({
+    total: 0,
+    enService: 0,
+    enPanne: 0,
+    horsService: 0,
+  });
 
   // Modal d'ajout
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,6 +102,9 @@ export default function EquipementsPage() {
       const json = await res.json();
       if (json.success) {
         setEquipements(json.data);
+        if (json.stats) {
+          setGlobalStats(json.stats);
+        }
       } else {
         toast.error("Erreur de chargement des équipements.");
       }
@@ -365,7 +374,7 @@ export default function EquipementsPage() {
               </span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2 tabular-nums">
-              {stats.total}
+              {globalStats.total}
             </p>
             <p className="text-[11px] text-slate-400 mt-1 font-medium">
               {filterEtat === "tous" ? "✓ Filtre actif" : "Cliquer pour tout afficher"}
@@ -389,7 +398,7 @@ export default function EquipementsPage() {
               </span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-emerald-700 mt-2 tabular-nums">
-              {stats.enService}
+              {globalStats.enService}
             </p>
             <p className="text-[11px] text-emerald-600 mt-1 font-medium">
               {filterEtat === "en_service" ? "✓ Filtré : En service" : "Cliquer pour filtrer"}
@@ -413,7 +422,7 @@ export default function EquipementsPage() {
               </span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-amber-700 mt-2 tabular-nums">
-              {stats.enPanne}
+              {globalStats.enPanne}
             </p>
             <p className="text-[11px] text-amber-600 mt-1 font-medium">
               {filterEtat === "en_panne" ? "✓ Filtré : En panne" : "Cliquer pour filtrer"}
@@ -437,7 +446,7 @@ export default function EquipementsPage() {
               </span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-rose-700 mt-2 tabular-nums">
-              {stats.horsService}
+              {globalStats.horsService}
             </p>
             <p className="text-[11px] text-rose-600 mt-1 font-medium">
               {filterEtat === "hors_service" ? "✓ Filtré : Hors service" : "Cliquer pour filtrer"}

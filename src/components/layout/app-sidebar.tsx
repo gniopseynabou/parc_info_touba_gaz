@@ -208,39 +208,57 @@ export function AppSidebar({
 
         {/* Pied de page : Profil utilisateur & Bouton Déconnexion */}
         <div className="shrink-0 border-t border-slate-100 p-2.5 space-y-2">
-          {/* Menu déroulant profil */}
+          {/* Menu déroulant profil avec Tooltip au survol et Déconnexion au clic (Items 3 & 4) */}
           <DropdownMenu>
-            <DropdownMenuTrigger
-              className={`flex w-full items-center rounded-xl p-1.5 transition-colors hover:bg-slate-100 focus:bg-slate-100 outline-none ${
-                isExpanded ? "gap-2.5" : "justify-center"
-              }`}
-            >
-              <Avatar className="size-9 rounded-xl">
-                <AvatarFallback className="bg-emerald-600 text-white text-xs font-bold rounded-xl">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              {isExpanded && (
-                <div className="grid flex-1 text-left text-xs leading-tight min-w-0">
-                  <span className="truncate font-semibold text-slate-900">
-                    {userName}
-                  </span>
-                  <span className="truncate text-[11px] text-slate-500">
-                    {userRole}
-                  </span>
-                </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <DropdownMenuTrigger
+                    title={`${userName} — ${userRole}`}
+                    className={`flex w-full items-center rounded-xl p-1.5 transition-colors hover:bg-slate-100 focus:bg-slate-100 outline-none cursor-pointer ${
+                      isExpanded ? "gap-2.5" : "justify-center"
+                    }`}
+                  >
+                    <Avatar className="size-9 rounded-xl">
+                      <AvatarFallback className="bg-emerald-600 text-white text-xs font-bold rounded-xl">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    {isExpanded && (
+                      <div className="grid flex-1 text-left text-xs leading-tight min-w-0">
+                        <span className="truncate font-semibold text-slate-900">
+                          {userName}
+                        </span>
+                        <span className="truncate text-[11px] text-slate-500">
+                          {userRole}
+                        </span>
+                      </div>
+                    )}
+                  </DropdownMenuTrigger>
+                }
+              />
+              {!isExpanded && (
+                <TooltipContent
+                  side="right"
+                  sideOffset={10}
+                  className="bg-slate-900 text-white text-xs p-2.5 rounded-xl shadow-xl z-50 min-w-36"
+                >
+                  <p className="font-bold text-white leading-tight">{userName}</p>
+                  <p className="text-[11px] text-emerald-400 mt-0.5 leading-tight">{userRole}</p>
+                </TooltipContent>
               )}
-            </DropdownMenuTrigger>
+            </Tooltip>
             <DropdownMenuContent
               side={isExpanded ? "top" : "right"}
               align="start"
               sideOffset={10}
-              className="w-56"
+              className="w-56 p-1.5 shadow-lg"
             >
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-xs font-semibold text-slate-900">{userName}</p>
-                  <p className="text-[11px] text-slate-500 truncate">{userEmail}</p>
+              <DropdownMenuLabel className="p-2.5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-900">{userName}</span>
+                  <span className="text-[11px] text-emerald-700 font-medium mt-0.5">{userRole}</span>
+                  <span className="text-[10px] text-slate-400 truncate mt-0.5">{userEmail}</span>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -257,9 +275,9 @@ export function AppSidebar({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
-                className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                className="text-xs text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer flex items-center gap-2 p-2 rounded-lg font-medium"
               >
-                <LogOut className="size-4" />
+                <LogOut className="size-4 text-rose-600" />
                 <span>Se déconnecter</span>
               </DropdownMenuItem>
             </DropdownMenuContent>

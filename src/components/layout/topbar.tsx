@@ -121,34 +121,7 @@ export function Topbar({
           />
         </button>
 
-        {/* 6. Liens Rapides fonctionnels (routes réelles uniquement) */}
-        <DropdownMenu>
-          <DropdownMenuTrigger className="hidden md:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-            <Search className="size-3.5 text-slate-400" />
-            <span>Liens rapides...</span>
-            <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 ml-2">
-              Alt+K
-            </kbd>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56 p-1.5">
-            <DropdownMenuLabel className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-              Modules principaux
-            </DropdownMenuLabel>
-            {QUICK_LINKS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <DropdownMenuItem
-                  key={item.href}
-                  onClick={() => router.push(item.href)}
-                  className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium text-slate-700 hover:text-emerald-700 cursor-pointer rounded-lg"
-                >
-                  <Icon className="size-4 text-emerald-600" />
-                  <span>{item.label}</span>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+
       </div>
 
       {/* Côté droit : Cloche notifications administrateur + Avatar circulaire de l'utilisateur connecté */}
