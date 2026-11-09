@@ -4,7 +4,6 @@ import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { hashPassword, requireAuth } from "@/lib/auth";
 
-
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,6 +15,16 @@ export async function GET(
     }
 
     const { id } = await params;
+    const session = authResult.user;
+
+    // Protection anti-IDOR : un collaborateur ne peut consulter que sa propre fiche
+    if (session.role !== "admin" && session.employe_id !== id && session.id !== id) {
+      return NextResponse.json(
+        { success: false, message: "Accès refusé. Vous ne pouvez pas consulter la fiche d'un tiers." },
+        { status: 403 }
+      );
+    }
+
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT e.*, s.nom as service_nom, u.role as user_role, u.email as user_email, u.actif as user_actif
        FROM employes e 

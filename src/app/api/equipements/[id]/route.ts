@@ -24,7 +24,15 @@ export async function GET(
           ELSE NULL
         END as affectation_actuelle,
         a.id as affectation_id,
-        a.date_debut as affectation_date_debut
+        a.date_debut as affectation_date_debut,
+        a.commentaire as affectation_commentaire,
+        a.employe_id as affectation_employe_id,
+        a.service_id as affectation_service_id,
+        CASE 
+          WHEN a.employe_id IS NOT NULL THEN 'employe'
+          WHEN a.service_id IS NOT NULL THEN 'service'
+          ELSE NULL
+        END as affectation_cible_type
       FROM equipements e
       LEFT JOIN affectations a ON a.equipement_id = e.id AND a.date_fin IS NULL
       LEFT JOIN employes emp ON emp.id = a.employe_id

@@ -52,7 +52,6 @@ export async function GET(req: Request) {
     const realEmployeId = employe.id;
     const serviceId = employe.service_id;
 
-    console.log(`[GET /api/employe/me] Espace collaborateur chargé: employé=${realEmployeId} (${employe.prenom} ${employe.nom})`);
 
     // 1. Équipements personnels affectés directement à l'employé (affectation active)
     const [equipementsPerso] = await pool.query<RowDataPacket[]>(

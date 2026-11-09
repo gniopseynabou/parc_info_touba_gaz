@@ -16,21 +16,24 @@ param (
 
 $ErrorActionPreference = "Stop"
 
-# 1. Charger automatiquement les variables de .env.local si non fournies en paramètre
-$envFile = Join-Path "$PSScriptRoot\.." ".env.local"
-if (Test-Path $envFile) {
-    Get-Content $envFile | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
-            $parts = $line.Split("=", 2)
-            $key = $parts[0].Trim()
-            $val = $parts[1].Trim()
-            if (-not $DbHost -and $key -eq "DB_HOST") { $DbHost = $val }
-            if (-not $DbPort -and $key -eq "DB_PORT") { $DbPort = $val }
-            if (-not $DbUser -and $key -eq "DB_USER") { $DbUser = $val }
-            if (-not $DbPassword -and $key -eq "DB_PASSWORD") { $DbPassword = $val }
-            if (-not $DbName -and $key -eq "DB_NAME") { $DbName = $val }
+# 1. Charger automatiquement les variables de .env.local ou .env si non fournies en paramètre
+$envFiles = @((Join-Path "$PSScriptRoot\.." ".env.local"), (Join-Path "$PSScriptRoot\.." ".env"))
+foreach ($envFile in $envFiles) {
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $parts = $line.Split("=", 2)
+                $key = $parts[0].Trim()
+                $val = $parts[1].Trim()
+                if (-not $DbHost -and $key -eq "DB_HOST") { $DbHost = $val }
+                if (-not $DbPort -and $key -eq "DB_PORT") { $DbPort = $val }
+                if (-not $DbUser -and $key -eq "DB_USER") { $DbUser = $val }
+                if (-not $DbPassword -and ($key -eq "DB_PASSWORD" -or $key -eq "DB_PASS")) { $DbPassword = $val }
+                if (-not $DbName -and $key -eq "DB_NAME") { $DbName = $val }
+            }
         }
+        break
     }
 }
 

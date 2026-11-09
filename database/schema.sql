@@ -193,7 +193,7 @@ ON DUPLICATE KEY UPDATE `nom` = VALUES(`nom`);
 
 INSERT INTO `utilisateurs` (`id`, `email`, `password_hash`, `nom`, `prenom`, `role`, `actif`)
 VALUES
-  ('usr-admin-01', 'admin@toubagaz.sn', '$2b$10$eO1Wf5R2pQc.K9xWb1cQ3.0aZbM1q9I/jY3v9TjR.G1lQvP2e1.mO', 'Admin', 'Touba Gaz IT', 'admin', 1)
+  ('usr-admin-01', 'admin@toubagaz.sn', '$2b$10$eCMBB2iLzEXzvRvcdI7r2.ltIpfEP9DbtIcv6ohUFC4njZFth2wXS', 'Admin', 'Touba Gaz IT', 'admin', 1)
 ON DUPLICATE KEY UPDATE `email` = VALUES(`email`);
 
 INSERT INTO `employes` (`id`, `nom`, `prenom`, `email`, `telephone`, `service_id`, `actif`, `user_id`)

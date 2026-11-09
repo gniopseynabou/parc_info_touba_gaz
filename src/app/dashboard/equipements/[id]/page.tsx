@@ -23,6 +23,8 @@ import {
   Upload,
   X,
   ImageIcon,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,10 @@ interface TicketLie {
 interface EquipementDetailData extends Equipement {
   affectation_id?: string;
   affectation_date_debut?: string;
+  affectation_commentaire?: string;
+  affectation_employe_id?: string;
+  affectation_service_id?: string;
+  affectation_cible_type?: "employe" | "service";
   historique: AffectationHistorique[];
   tickets: TicketLie[];
 }
@@ -94,6 +100,24 @@ export default function EquipementDetailPage({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // État du modal d'affectation / réaffectation directe
+  const [isAffectationModalOpen, setIsAffectationModalOpen] = useState(false);
+  const [affectationStep, setAffectationStep] = useState<"cloture_confirm" | "nouvelle">("nouvelle");
+  const [isSubmittingAffectation, setIsSubmittingAffectation] = useState(false);
+  const [employesList, setEmployesList] = useState<any[]>([]);
+  const [servicesList, setServicesList] = useState<any[]>([]);
+  const [filterModalService, setFilterModalService] = useState<string>("tous");
+
+  // Champs de clôture (Étape 1)
+  const [clotureDateFin, setClotureDateFin] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [clotureCommentaire, setClotureCommentaire] = useState<string>("");
+
+  // Champs de nouvelle affectation (Étape 2)
+  const [nouvelleCibleType, setNouvelleCibleType] = useState<"employe" | "service">("employe");
+  const [nouvelleCibleId, setNouvelleCibleId] = useState<string>("");
+  const [nouvelleDateDebut, setNouvelleDateDebut] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [nouvelleCommentaire, setNouvelleCommentaire] = useState<string>("");
 
   const loadData = async () => {
     setIsLoading(true);
@@ -125,10 +149,159 @@ export default function EquipementDetailPage({
     }
   };
 
+  const loadEmployesAndServices = async () => {
+    try {
+      const [resEmp, resSrv] = await Promise.all([
+        fetch("/api/employes"),
+        fetch("/api/services"),
+      ]);
+      const jsonEmp = await resEmp.json();
+      const jsonSrv = await resSrv.json();
+      if (resEmp.ok && jsonEmp.success) {
+        setEmployesList(jsonEmp.data || []);
+      }
+      if (resSrv.ok && jsonSrv.success) {
+        setServicesList(jsonSrv.data || []);
+      }
+    } catch {
+      // Ignorer silencieusement ou fallback
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadEmployesAndServices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Ouverture du modal pour affecter un matériel libre (va directement à l'étape 2)
+  const openNouvelleAffectation = () => {
+    setAffectationStep("nouvelle");
+    setNouvelleCibleType("employe");
+    setNouvelleCibleId("");
+    setNouvelleDateDebut(new Date().toISOString().slice(0, 10));
+    setNouvelleCommentaire("");
+    setFilterModalService("tous");
+    setIsAffectationModalOpen(true);
+  };
+
+  // Ouverture du modal pour réaffecter ou clôturer un matériel déjà affecté (commence à l'étape 1)
+  const openClotureOrReaffectation = () => {
+    setAffectationStep("cloture_confirm");
+    setClotureDateFin(new Date().toISOString().slice(0, 10));
+    setClotureCommentaire(
+      data?.affectation_commentaire
+        ? `Clôture de l'affectation précédente (${data.affectation_commentaire})`
+        : "Clôture d'affectation pour réaffectation ou remise en stock"
+    );
+    setNouvelleCibleType("employe");
+    setNouvelleCibleId("");
+    setNouvelleDateDebut(new Date().toISOString().slice(0, 10));
+    setNouvelleCommentaire("");
+    setFilterModalService("tous");
+    setIsAffectationModalOpen(true);
+  };
+
+  // Action : Clôturer uniquement (retour en stock sans nouvelle affectation)
+  const handleCloturerVersStock = async () => {
+    if (!data?.affectation_id) {
+      toast.error("Aucune affectation active à clôturer.");
+      return;
+    }
+    setIsSubmittingAffectation(true);
+    try {
+      const res = await fetch(`/api/affectations/${data.affectation_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date_fin: clotureDateFin || new Date().toISOString().slice(0, 10),
+          commentaire: clotureCommentaire.trim() || "Affectation clôturée. Matériel remis en stock.",
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success("Affectation clôturée. Le matériel est désormais disponible en stock.");
+        setIsAffectationModalOpen(false);
+        loadData();
+      } else {
+        toast.error(json.message || "Erreur lors de la clôture.");
+      }
+    } catch {
+      toast.error("Erreur serveur lors de la clôture.");
+    } finally {
+      setIsSubmittingAffectation(false);
+    }
+  };
+
+  // Action : Confirmer la clôture de l'ancienne affectation puis passer à l'étape 2 (Nouvelle affectation)
+  const handleConfirmerClotureEtContinuer = async () => {
+    if (!data?.affectation_id) {
+      setAffectationStep("nouvelle");
+      return;
+    }
+    setIsSubmittingAffectation(true);
+    try {
+      const res = await fetch(`/api/affectations/${data.affectation_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date_fin: clotureDateFin || new Date().toISOString().slice(0, 10),
+          commentaire: clotureCommentaire.trim() || "Affectation clôturée pour réaffectation.",
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success("Ancienne affectation clôturée avec succès.");
+        setAffectationStep("nouvelle");
+      } else {
+        toast.error(json.message || "Impossible de clôturer l'affectation actuelle.");
+      }
+    } catch {
+      toast.error("Erreur serveur lors de la clôture.");
+    } finally {
+      setIsSubmittingAffectation(false);
+    }
+  };
+
+  // Action : Valider et enregistrer la nouvelle affectation (Étape 2)
+  const handleValiderNouvelleAffectation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nouvelleCibleId) {
+      toast.error(
+        nouvelleCibleType === "employe"
+          ? "Veuillez sélectionner un collaborateur."
+          : "Veuillez sélectionner un service."
+      );
+      return;
+    }
+
+    setIsSubmittingAffectation(true);
+    try {
+      const res = await fetch("/api/affectations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          equipement_id: id,
+          cible_type: nouvelleCibleType,
+          cible_id: nouvelleCibleId,
+          date_debut: nouvelleDateDebut || new Date().toISOString().slice(0, 10),
+          commentaire: nouvelleCommentaire.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success("Nouvelle affectation enregistrée avec succès.");
+        setIsAffectationModalOpen(false);
+        loadData();
+      } else {
+        toast.error(json.message || "Erreur lors de la réaffectation.");
+      }
+    } catch {
+      toast.error("Erreur serveur lors de la réaffectation.");
+    } finally {
+      setIsSubmittingAffectation(false);
+    }
+  };
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -460,11 +633,14 @@ export default function EquipementDetailPage({
                   Traçabilité chronologique des bénéficiaires successifs (employés et services).
                 </CardDescription>
               </div>
-              <Link href="/dashboard/affectations">
-                <Button variant="outline" size="sm" className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs">
-                  Nouvelle affectation
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={data.affectation_actuelle ? openClotureOrReaffectation : openNouvelleAffectation}
+                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold"
+              >
+                {data.affectation_actuelle ? "Réaffecter" : "Nouvelle affectation"}
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               {data.historique.length === 0 ? (
@@ -553,16 +729,26 @@ export default function EquipementDetailPage({
 
           {/* Carte Affectation Actuelle */}
           <Card className="border border-slate-200 bg-white shadow-xs">
-            <CardHeader className="border-b border-slate-100 px-5 py-4">
+            <CardHeader className="border-b border-slate-100 px-5 py-4 flex flex-row items-center justify-between">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-emerald-700">
                 Affectation en cours
               </CardTitle>
+              {data.affectation_actuelle && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Actif
+                </span>
+              )}
             </CardHeader>
             <CardContent className="p-5 space-y-4">
               {data.affectation_actuelle ? (
                 <div>
                   <div className="flex items-center gap-2 text-slate-900 font-semibold text-base">
-                    <User className="h-4 w-4 text-emerald-600" />
+                    {data.affectation_cible_type === "service" ? (
+                      <Building2 className="h-4 w-4 text-blue-600 shrink-0" />
+                    ) : (
+                      <User className="h-4 w-4 text-emerald-600 shrink-0" />
+                    )}
                     <span>{data.affectation_actuelle}</span>
                   </div>
                   {data.affectation_date_debut && (
@@ -571,22 +757,40 @@ export default function EquipementDetailPage({
                       Depuis le {formatDateFr(data.affectation_date_debut)}
                     </p>
                   )}
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <Link href="/dashboard/affectations">
-                      <Button size="sm" variant="outline" className="w-full border-slate-200 text-slate-700 hover:bg-slate-50 text-xs">
-                        Modifier ou réaffecter
-                      </Button>
-                    </Link>
+                  {data.affectation_commentaire && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded mt-2 border border-slate-100 italic">
+                      « {data.affectation_commentaire} »
+                    </p>
+                  )}
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                    <Button
+                      size="sm"
+                      onClick={openClotureOrReaffectation}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Réaffecter
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={openClotureOrReaffectation}
+                      className="w-full border-slate-200 text-slate-600 hover:bg-slate-50 text-xs"
+                    >
+                      Clôturer l'affectation
+                    </Button>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-sm text-slate-500 italic">Cet équipement est actuellement en stock (non affecté).</p>
-                  <Link href="/dashboard/affectations" className="mt-3 inline-block">
-                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs">
-                      Attribuer cet équipement
-                    </Button>
-                  </Link>
+                  <Button
+                    size="sm"
+                    onClick={openNouvelleAffectation}
+                    className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                  >
+                    Affecter cet équipement
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -639,6 +843,324 @@ export default function EquipementDetailPage({
           </Card>
         </div>
       </div>
+      {/* Modal Affectation / Clôture / Réaffectation */}
+      {isAffectationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in-50 zoom-in-95">
+            {/* Header modal */}
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <RefreshCw className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {affectationStep === "cloture_confirm"
+                      ? "Clôturer l'affectation actuelle"
+                      : "Nouvelle affectation du matériel"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {data.type} {data.marque} {data.modele} ({formatCodeEquipement(data.code)})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAffectationModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Corps modal - Étape 1 : Clôture */}
+            {affectationStep === "cloture_confirm" && (
+              <div className="p-6 space-y-5">
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900 flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-sm text-amber-900">
+                      Vous êtes sur le point de clôturer l'affectation actuelle de cet équipement.
+                    </p>
+                    <p className="mt-1 text-amber-800">
+                      L'historique sera conservé avec la date de restitution. L'équipement pourra ensuite être réaffecté immédiatement ou remis en stock.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Récapitulatif affectation actuelle */}
+                <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Bénéficiaire actuel :</span>
+                    <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                      {data.affectation_cible_type === "service" ? (
+                        <Building2 className="h-3.5 w-3.5 text-blue-600" />
+                      ) : (
+                        <User className="h-3.5 w-3.5 text-emerald-600" />
+                      )}
+                      {data.affectation_actuelle}
+                    </span>
+                  </div>
+                  {data.affectation_date_debut && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Date de début :</span>
+                      <span className="font-medium text-slate-800">
+                        {formatDateFr(data.affectation_date_debut)}
+                      </span>
+                    </div>
+                  )}
+                  {data.affectation_commentaire && (
+                    <div className="flex items-start justify-between pt-1 border-t border-slate-200/60">
+                      <span className="text-slate-500">Motif initial :</span>
+                      <span className="font-medium text-slate-700 italic max-w-[240px] text-right">
+                        {data.affectation_commentaire}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Date de fin / restitution
+                    </Label>
+                    <Input
+                      type="date"
+                      value={clotureDateFin}
+                      onChange={(e) => setClotureDateFin(e.target.value)}
+                      className="text-xs"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Commentaire ou motif de clôture
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder="Ex: Restitution suite à fin de mission, changement de poste..."
+                      value={clotureCommentaire}
+                      onChange={(e) => setClotureCommentaire(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Actions Étape 1 */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAffectationModalOpen(false)}
+                    disabled={isSubmittingAffectation}
+                    className="w-full sm:w-auto text-xs"
+                  >
+                    Annuler
+                  </Button>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCloturerVersStock}
+                      disabled={isSubmittingAffectation}
+                      className="w-full sm:w-auto text-xs border-amber-300 text-amber-800 hover:bg-amber-50"
+                    >
+                      {isSubmittingAffectation ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : null}
+                      Clôturer et remettre en stock
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleConfirmerClotureEtContinuer}
+                      disabled={isSubmittingAffectation}
+                      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                    >
+                      {isSubmittingAffectation ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Confirmer et réaffecter
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Corps modal - Étape 2 : Nouvelle affectation */}
+            {affectationStep === "nouvelle" && (
+              <form onSubmit={handleValiderNouvelleAffectation} className="p-6 space-y-4">
+                {/* Type de bénéficiaire : Employé ou Service */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Type de bénéficiaire <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNouvelleCibleType("employe");
+                        setNouvelleCibleId("");
+                      }}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-lg border text-xs font-semibold transition-all ${
+                        nouvelleCibleType === "employe"
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <User className="h-4 w-4 text-emerald-600" />
+                      Collaborateur (Employé)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNouvelleCibleType("service");
+                        setNouvelleCibleId("");
+                      }}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-lg border text-xs font-semibold transition-all ${
+                        nouvelleCibleType === "service"
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Building2 className="h-4 w-4 text-blue-600" />
+                      Service partagé
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cas 1 : Bénéficiaire = Employé */}
+                {nouvelleCibleType === "employe" && (
+                  <div className="space-y-3 rounded-lg bg-slate-50 p-3.5 border border-slate-200/80">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-slate-600">Filtrer par service (facultatif)</Label>
+                      <select
+                        value={filterModalService}
+                        onChange={(e) => setFilterModalService(e.target.value)}
+                        className="w-full text-xs rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="tous">Tous les services</option>
+                        {servicesList.map((srv) => (
+                          <option key={srv.id} value={srv.id}>
+                            {srv.nom}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">
+                        Sélectionner l'employé <span className="text-red-500">*</span>
+                      </Label>
+                      <select
+                        value={nouvelleCibleId}
+                        onChange={(e) => setNouvelleCibleId(e.target.value)}
+                        className="w-full text-xs rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        required
+                      >
+                        <option value="">-- Choisir un collaborateur --</option>
+                        {employesList
+                          .filter(
+                            (emp) =>
+                              filterModalService === "tous" || emp.service_id === filterModalService
+                          )
+                          .map((emp) => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.prenom} {emp.nom} {emp.service_nom ? `(${emp.service_nom})` : ""}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cas 2 : Bénéficiaire = Service */}
+                {nouvelleCibleType === "service" && (
+                  <div className="space-y-1.5 rounded-lg bg-slate-50 p-3.5 border border-slate-200/80">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Sélectionner le service <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={nouvelleCibleId}
+                      onChange={(e) => setNouvelleCibleId(e.target.value)}
+                      className="w-full text-xs rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                    >
+                      <option value="">-- Choisir un service --</option>
+                      {servicesList.map((srv) => (
+                        <option key={srv.id} value={srv.id}>
+                          {srv.nom} {srv.code ? `(${srv.code})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Date de début */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Date de début de dotation <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={nouvelleDateDebut}
+                    onChange={(e) => setNouvelleDateDebut(e.target.value)}
+                    className="text-xs"
+                    required
+                  />
+                </div>
+
+                {/* Commentaire / Motif */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Motif ou commentaire d'affectation
+                  </Label>
+                  <Input
+                    type="text"
+                    placeholder="Ex: Dotation poste fixe, renouvellement PC portable..."
+                    value={nouvelleCommentaire}
+                    onChange={(e) => setNouvelleCommentaire(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+
+                {/* Actions Étape 2 */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (data.affectation_actuelle) {
+                        setAffectationStep("cloture_confirm");
+                      } else {
+                        setIsAffectationModalOpen(false);
+                      }
+                    }}
+                    disabled={isSubmittingAffectation}
+                    className="text-xs"
+                  >
+                    {data.affectation_actuelle ? "← Retour clôture" : "Annuler"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmittingAffectation || !nouvelleCibleId}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                  >
+                    {isSubmittingAffectation ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    Enregistrer l'affectation
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { RowDataPacket, ResultSetHeader } from "mysql2";
 import crypto from "crypto";
 import { requireAuth } from "@/lib/auth";
 import { notifyAdmins, notifyTicketDemandeur } from "@/lib/notifications";
+import { ticketSyncBus } from "@/lib/ticket-sync";
 
 export async function GET(
   req: Request,
@@ -209,6 +210,23 @@ export async function PUT(
       } catch (notifErr) {
         console.error("Erreur lors de l'envoi des notifications:", notifErr);
       }
+    }
+
+    // Diffusion temps réel pour l'espace collaborateur
+    try {
+      ticketSyncBus.notifyTicketUpdated({
+        ticketId: id,
+        demandeurId: currentTicket.demandeur_id,
+        statut: statut || currentTicket.statut,
+        numero: currentTicket.numero,
+        dateResolution: date_resolution,
+        dateCloture: date_cloture,
+        interventionActions: intervention?.actions?.trim() || null,
+        interventionResultat: intervention?.resultat?.trim() || null,
+        updatedAt: nowSql,
+      });
+    } catch (syncErr) {
+      console.error("Erreur diffusion synchronisation ticket:", syncErr);
     }
 
     return NextResponse.json({ success: true, message: "Ticket mis à jour avec succès." });

@@ -7,7 +7,7 @@ import { hashPassword, requireAuth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
-    const authResult = await requireAuth(req);
+    const authResult = await requireAuth(req, ["admin"]);
     if ("errorResponse" in authResult) {
       return authResult.errorResponse;
     }

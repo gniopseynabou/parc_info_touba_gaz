@@ -28,6 +28,9 @@ import {
   Hash,
   Sparkles,
   Info,
+  Radio,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,6 +80,7 @@ export default function EspaceEmployePage() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"equipements" | "tickets" | "support">("equipements");
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
 
   // Modal Nouveau Ticket
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -141,6 +145,161 @@ export default function EspaceEmployePage() {
   useEffect(() => {
     loadEmployeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Synchronisation en temps réel (SSE) + Fallback Polling intelligent sans rechargement de page
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    let isSubscribed = true;
+
+    // Fonction de rafraîchissement ciblé des tickets sans écraser toute la page ni spinner bloquant
+    const silentRefreshTickets = async () => {
+      try {
+        const res = await fetch("/api/employe/me");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            const newTickets = json.data.tickets || [];
+            setTickets(newTickets);
+            setStats((prev) => ({
+              ...prev,
+              totalTickets: newTickets.length,
+              ticketsEnCours: newTickets.filter((t: any) =>
+                ["nouveau", "en_cours", "en_attente"].includes(t.statut)
+              ).length,
+              ticketsResolus: newTickets.filter((t: any) =>
+                ["resolu", "cloture"].includes(t.statut)
+              ).length,
+            }));
+          }
+        }
+      } catch {
+        // Ignorer en mode silencieux
+      }
+    };
+
+    // Connexion SSE (Server-Sent Events) pour mise à jour instantanée (0ms)
+    const connectSSE = () => {
+      if (typeof window === "undefined" || !("EventSource" in window)) return;
+
+      try {
+        eventSource = new EventSource("/api/employe/tickets/sync?stream=true");
+
+        eventSource.onopen = () => {
+          if (isSubscribed) {
+            setIsLiveConnected(true);
+          }
+        };
+
+        eventSource.onmessage = (event) => {
+          if (!isSubscribed) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "TICKET_UPDATED") {
+              const { ticketId, statut, numero, interventionActions, interventionResultat } = data;
+
+              // Mise à jour ciblée et instantanée du statut et de l'intervention dans le state React
+              setTickets((prev) => {
+                const next = prev.map((t) => {
+                  if (t.id === ticketId) {
+                    return {
+                      ...t,
+                      statut,
+                      intervention_actions: interventionActions !== undefined ? interventionActions : (t as any).intervention_actions,
+                      intervention_resultat: interventionResultat !== undefined ? interventionResultat : (t as any).intervention_resultat,
+                    };
+                  }
+                  return t;
+                });
+
+                // Recalcul immédiat des compteurs statistiques
+                setStats((prevStats) => ({
+                  ...prevStats,
+                  totalTickets: next.length,
+                  ticketsEnCours: next.filter((t) =>
+                    ["nouveau", "en_cours", "en_attente"].includes(t.statut)
+                  ).length,
+                  ticketsResolus: next.filter((t) =>
+                    ["resolu", "cloture"].includes(t.statut)
+                  ).length,
+                }));
+
+                return next;
+              });
+
+              // Notification toast conviviale
+              const labelStatut =
+                STATUTS_TICKETS[statut as keyof typeof STATUTS_TICKETS]?.label || statut;
+              toast.info(
+                `Ticket #${formatNumeroTicket(numero)} mis à jour en direct : ${labelStatut}`
+              );
+
+              // Récupérer les éventuels détails supplémentaires en arrière-plan sans bloquer
+              silentRefreshTickets();
+            }
+          } catch {
+            // Heartbeat ou format non-json standard
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (isSubscribed) {
+            setIsLiveConnected(false);
+          }
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          // Tentative de reconnexion après 5 secondes
+          setTimeout(() => {
+            if (isSubscribed) connectSSE();
+          }, 5000);
+        };
+      } catch {
+        if (isSubscribed) setIsLiveConnected(false);
+      }
+    };
+
+    connectSSE();
+
+    // Fallback : Polling intelligent toutes les 8 secondes UNIQUEMENT si l'onglet est actif
+    fallbackInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetch("/api/employe/tickets/sync")
+          .then((res) => (res.ok ? res.json() : null))
+          .then((syncData) => {
+            if (syncData?.success) {
+              // Si la date de mise à jour a bougé, rafraîchir en douceur
+              silentRefreshTickets();
+            }
+          })
+          .catch(() => {});
+      }
+    }, 8000);
+
+    // Événement : retour sur l'onglet -> synchronisation immédiate sans recharger
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        silentRefreshTickets();
+      }
+    };
+
+    const handleOnline = () => {
+      silentRefreshTickets();
+      if (!eventSource) connectSSE();
+    };
+
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      isSubscribed = false;
+      if (eventSource) eventSource.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -236,6 +395,27 @@ export default function EspaceEmployePage() {
 
         {/* Profil collaborateur et bouton quitter / déconnexion directe */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Badge de synchronisation temps réel */}
+          <div
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+              isLiveConnected
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-slate-100 text-slate-500 border-slate-200"
+            }`}
+            title={
+              isLiveConnected
+                ? "Synchronisation instantanée active : les modifications de statut apparaissent en direct."
+                : "Synchronisation périodique active."
+            }
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isLiveConnected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+              }`}
+            />
+            <span>{isLiveConnected ? "En direct" : "Synchro auto"}</span>
+          </div>
+
           <DropdownMenu>
             <DropdownMenuTrigger
               className="flex items-center gap-2.5 rounded-xl p-1.5 hover:bg-slate-100 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 text-left"

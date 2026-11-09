@@ -4,7 +4,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { RoleUtilisateur } from "@/types";
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "touba-gaz-secret-signature-2026-secure-key";
+const SESSION_SECRET = process.env.SESSION_SECRET || (
+  process.env.NODE_ENV === "production"
+    ? (() => { throw new Error("CRITIQUE SÉCURITÉ: Variable SESSION_SECRET obligatoire non définie en production !"); })()
+    : "touba-gaz-dev-only-secret-do-not-use-in-production-random-98124"
+);
 const SESSION_COOKIE_NAME = "touba_gaz_session";
 const SESSION_DURATION_SECONDS = 7 * 24 * 3600; // 7 jours
 
@@ -33,8 +37,9 @@ export function hashPasswordSync(password: string): string {
 }
 
 /**
- * Vérifie si le mot de passe correspond au hash stocké
- * Compatible avec bcrypt, l'ancien format sel:hash sha256, et les comptes démo
+ * Vérifie si le mot de passe correspond au hash stocké.
+ * Supporte bcrypt standard et l'ancien format sel:hash sha256.
+ * Tout mot de passe en clair ou bypass est strictement rejeté.
  */
 export function verifyPassword(password: string, storedHash: string): boolean {
   if (!password || !storedHash) return false;
@@ -42,29 +47,25 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   // 1. Format bcrypt standard ($2a$, $2b$, $2y$)
   if (storedHash.startsWith("$2a$") || storedHash.startsWith("$2b$") || storedHash.startsWith("$2y$")) {
     try {
-      if (bcrypt.compareSync(password, storedHash)) {
-        return true;
-      }
+      return bcrypt.compareSync(password, storedHash);
     } catch {
-      // ignore et fallback
+      return false;
     }
-
-    // Mots de passe administrateurs conventionnels de démo si hash statique
-    if (password === "admin123" || password === "toubagaz2026" || password === "Admin@2026" || password === "ToubaGaz@2026") {
-      return true;
-    }
-    return false;
   }
 
-  // 2. Ancien format sel:hash sha256
+  // 2. Ancien format sel:hash sha256 (comptes historiques)
   if (storedHash.includes(":")) {
     const [salt, originalHash] = storedHash.split(":");
+    if (!salt || !originalHash) return false;
     const testHash = crypto.createHmac("sha256", salt).update(password).digest("hex");
-    return testHash === originalHash;
+    const testBuf = Buffer.from(testHash);
+    const origBuf = Buffer.from(originalHash);
+    if (testBuf.length !== origBuf.length) return false;
+    return crypto.timingSafeEqual(testBuf, origBuf);
   }
 
-  // 3. Brut / texte clair éventuel
-  return password === storedHash;
+  // Rejet strict de tout mot de passe en texte clair
+  return false;
 }
 
 /**
@@ -85,49 +86,43 @@ export function createSessionToken(payload: Omit<SessionData, "exp">): string {
 }
 
 /**
- * Valide et décode un jeton de session
+ * Valide et décode un jeton de session signé.
+ * Rejette strictement tout jeton non signé, altéré ou expiré.
  */
 export function verifySessionToken(token: string): SessionData | null {
   if (!token || typeof token !== "string") return null;
 
   try {
     const parts = token.split(".");
-    if (parts.length === 3) {
-      const [headerB64, payloadB64, signature] = parts;
-      const expectedSig = crypto
-        .createHmac("sha256", SESSION_SECRET)
-        .update(`${headerB64}.${payloadB64}`)
-        .digest("base64url");
-
-      if (signature !== expectedSig) {
-        return null;
-      }
-
-      const payload: SessionData = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-        return null; // Expiré
-      }
-      return payload;
+    if (parts.length !== 3) {
+      return null;
     }
 
-    // Rétrocompatibilité : JSON non signé (transition)
-    const parsed = JSON.parse(token);
-    if (parsed && parsed.id && parsed.role) {
-      return {
-        id: parsed.id,
-        email: parsed.email || "",
-        nom: parsed.nom || "Utilisateur",
-        role: parsed.role,
-        employe_id: parsed.employe_id || parsed.id,
-        service_nom: parsed.service_nom,
-        exp: Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS,
-      };
+    const [headerB64, payloadB64, signature] = parts;
+    const expectedSig = crypto
+      .createHmac("sha256", SESSION_SECRET)
+      .update(`${headerB64}.${payloadB64}`)
+      .digest("base64url");
+
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
     }
+
+    const payload: SessionData = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+    if (!payload.id || !payload.role || !payload.exp) {
+      return null;
+    }
+
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+      return null; // Expiré
+    }
+
+    return payload;
   } catch {
     return null;
   }
-
-  return null;
 }
 
 /**

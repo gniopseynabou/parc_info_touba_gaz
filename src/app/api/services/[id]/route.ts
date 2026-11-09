@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authResult = await requireAuth(req);
+    const authResult = await requireAuth(req, ["admin"]);
     if ("errorResponse" in authResult) {
       return authResult.errorResponse;
     }

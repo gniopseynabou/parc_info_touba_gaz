@@ -256,13 +256,12 @@ export async function POST(req: Request) {
       priorite: finalPriority,
       priorite_explication: priorityExplication,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Erreur POST tickets:", error);
     return NextResponse.json(
       {
         success: false,
-        message: error?.message || "Erreur lors de la création du ticket.",
-        errorDetail: process.env.NODE_ENV !== "production" ? String(error?.stack || error) : undefined,
+        message: "Erreur lors de la création du ticket.",
       },
       { status: 500 }
     );
