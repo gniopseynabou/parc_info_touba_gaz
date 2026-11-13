@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Laptop,
@@ -382,13 +383,16 @@ export default function EspaceEmployePage() {
       {/* Barre supérieure adaptée mobile / tablette / desktop */}
       <header className="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 flex items-center justify-center">
-            <Flame className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold tracking-wider text-slate-900 truncate">TOUBA GAZ</span>
-            </div>
+          <Image
+            src="/logo.png"
+            alt="Logo Touba Gaz"
+            width={150}
+            height={50}
+            className="h-11 w-auto object-contain"
+            priority
+          />
+          <div className="min-w-0 border-l border-slate-200 pl-3">
+            <span className="text-xs font-bold tracking-wider text-emerald-800 uppercase block">Portail Employé</span>
             <p className="text-[11px] text-slate-500 hidden sm:block truncate">Gestion du parc informatique & assistance IT</p>
           </div>
         </div>

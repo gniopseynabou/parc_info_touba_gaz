@@ -78,18 +78,17 @@ export default function LoginPage() {
           {/* Panneau gauche : Présentation Touba Gaz */}
           <section className="auth-brand flex flex-col justify-between border-b border-slate-200 bg-white p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 shadow-2xs">
-                <Flame className="h-5 w-5" aria-hidden="true" />
+              <Image
+                src="/logo.png"
+                alt="Logo Touba Gaz"
+                width={160}
+                height={55}
+                className="h-12 w-auto object-contain"
+                priority
+              />
+              <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+                IT
               </span>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-bold tracking-[0.1em] text-slate-900">TOUBA GAZ</p>
-                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
-                    IT
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">Gestion du parc informatique</p>
-              </div>
             </div>
 
             <div className="flex flex-1 items-center justify-center py-6 lg:py-8">

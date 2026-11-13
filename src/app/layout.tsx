@@ -4,6 +4,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Touba Gaz — Parc Informatique",
   description: "Système de gestion du parc informatique et assistance Touba Gaz",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.ico" },
+      { url: "/logo.png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { Affectation, Equipement, Employe, Service } from "@/types";
-import { formatDateFr, formatCodeEquipement } from "@/lib/constants";
+import { formatDateFr, formatCodeEquipement, ETATS_EQUIPEMENTS } from "@/lib/constants";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -38,7 +38,7 @@ export default function AffectationsPage() {
 
   // Filtres
   const [search, setSearch] = useState("");
-  const [filterStatut, setFilterStatut] = useState<"toutes" | "actives" | "cloturees">("toutes");
+  const [filterStatut, setFilterStatut] = useState<"toutes" | "actives" | "cloturees" | "disponibles">("toutes");
   const [filterTypeCible, setFilterTypeCible] = useState<"tous" | "employe" | "service">("tous");
 
   // Modal d'affectation
@@ -161,6 +161,28 @@ export default function AffectationsPage() {
     });
   }, [affectations, filterStatut, filterTypeCible, search]);
 
+  // Équipements disponibles filtrés selon la recherche
+  const filteredEquipementsDispo = useMemo(() => {
+    if (!search) return equipementsDispo;
+    const q = search.toLowerCase();
+    return equipementsDispo.filter((eq) => {
+      const code = formatCodeEquipement(eq.code).toLowerCase();
+      const type = (eq.type || "").toLowerCase();
+      const marque = (eq.marque || "").toLowerCase();
+      const modele = (eq.modele || "").toLowerCase();
+      const serie = (eq.numero_serie || "").toLowerCase();
+      const loc = (eq.localisation || "").toLowerCase();
+      return (
+        code.includes(q) ||
+        type.includes(q) ||
+        marque.includes(q) ||
+        modele.includes(q) ||
+        serie.includes(q) ||
+        loc.includes(q)
+      );
+    });
+  }, [equipementsDispo, search]);
+
   const handleCreateAffectation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEqId) {
@@ -249,41 +271,15 @@ export default function AffectationsPage() {
         </div>
       </PageHeader>
 
-      {/* 4.1 Cartes d'indicateurs statistiques cliquables */}
+      {/* Cartes d'indicateurs statistiques cliquables */}
       <section aria-label="Indicateurs clés des affectations">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Équipements actuellement affectés */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          {/* 1. Affectations actives */}
           <button
             type="button"
             onClick={() => {
-              setFilterStatut("actives");
+              setFilterStatut(filterStatut === "actives" ? "toutes" : "actives");
               setFilterTypeCible("tous");
-            }}
-            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-              filterStatut === "actives"
-                ? "bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm"
-                : "bg-white border-slate-200 hover:border-slate-300 shadow-xs"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-600">Équipements affectés</span>
-              <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                <Laptop className="size-4" />
-              </span>
-            </div>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-2 tabular-nums">
-              {stats.totalEquipementsAffectes}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-1 font-medium">
-              Matériels actuellement attribués
-            </p>
-          </button>
-
-          {/* Affectations actives */}
-          <button
-            type="button"
-            onClick={() => {
-              setFilterStatut("actives");
             }}
             className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
               filterStatut === "actives"
@@ -300,16 +296,17 @@ export default function AffectationsPage() {
             <p className="text-2xl sm:text-3xl font-bold text-emerald-700 mt-2 tabular-nums">
               {stats.affectationsActives}
             </p>
-            <p className="text-[11px] text-emerald-600 mt-1 font-medium">
-              En cours d'utilisation
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
+              Matériels actuellement attribués
             </p>
           </button>
 
-          {/* Affectations clôturées */}
+          {/* 2. Affectations clôturées */}
           <button
             type="button"
             onClick={() => {
-              setFilterStatut("cloturees");
+              setFilterStatut(filterStatut === "cloturees" ? "toutes" : "cloturees");
+              setFilterTypeCible("tous");
             }}
             className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
               filterStatut === "cloturees"
@@ -331,8 +328,18 @@ export default function AffectationsPage() {
             </p>
           </button>
 
-          {/* Non affectés (En stock) */}
-          <div className="p-4 rounded-2xl border bg-white border-slate-200 shadow-xs">
+          {/* 3. Non affectés (En stock) — Cliquable pour afficher les matériels disponibles */}
+          <button
+            type="button"
+            onClick={() => {
+              setFilterStatut(filterStatut === "disponibles" ? "toutes" : "disponibles");
+            }}
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              filterStatut === "disponibles"
+                ? "bg-white border-sky-500 ring-2 ring-sky-500/20 shadow-sm"
+                : "bg-white border-slate-200 hover:border-slate-300 shadow-xs"
+            }`}
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-600">Non affectés (En stock)</span>
               <span className="p-2 rounded-xl bg-sky-50 text-sky-600">
@@ -345,7 +352,7 @@ export default function AffectationsPage() {
             <p className="text-[11px] text-sky-600 mt-1 font-medium">
               Disponibles pour dotation
             </p>
-          </div>
+          </button>
         </div>
       </section>
 
@@ -356,7 +363,11 @@ export default function AffectationsPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
-              placeholder="Rechercher par équipement, bénéficiaire, service, commentaire..."
+              placeholder={
+                filterStatut === "disponibles"
+                  ? "Rechercher par équipement disponible, marque, modèle, numéro de série..."
+                  : "Rechercher par équipement, bénéficiaire, service, commentaire..."
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -376,20 +387,23 @@ export default function AffectationsPage() {
               className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 shadow-xs"
             >
               <option value="toutes">Toutes les affectations</option>
-              <option value="actives">Actives uniquement</option>
-              <option value="cloturees">Clôturées uniquement</option>
+              <option value="actives">Affectations actives</option>
+              <option value="cloturees">Affectations clôturées</option>
+              <option value="disponibles">Équipements non affectés (En stock)</option>
             </select>
 
-            {/* Filtre type de bénéficiaire */}
-            <select
-              value={filterTypeCible}
-              onChange={(e) => setFilterTypeCible(e.target.value as any)}
-              className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 shadow-xs"
-            >
-              <option value="tous">Tous les bénéficiaires</option>
-              <option value="employe">Employés individuels</option>
-              <option value="service">Services partagés</option>
-            </select>
+            {/* Filtre type de bénéficiaire (masqué si affichage stock) */}
+            {filterStatut !== "disponibles" && (
+              <select
+                value={filterTypeCible}
+                onChange={(e) => setFilterTypeCible(e.target.value as any)}
+                className="h-10 rounded-lg bg-white border border-slate-200 px-3 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-600 shadow-xs"
+              >
+                <option value="tous">Tous les bénéficiaires</option>
+                <option value="employe">Employés individuels</option>
+                <option value="service">Services partagés</option>
+              </select>
+            )}
 
             {(filterStatut !== "toutes" || filterTypeCible !== "tous" || search) && (
               <Button
@@ -401,7 +415,7 @@ export default function AffectationsPage() {
                   setFilterTypeCible("tous");
                   setSearch("");
                 }}
-                className="text-xs text-slate-500 hover:text-slate-800 h-10 px-2"
+                className="text-xs text-slate-500 hover:text-slate-800 h-10 px-2 cursor-pointer"
               >
                 Réinitialiser
               </Button>
@@ -410,129 +424,230 @@ export default function AffectationsPage() {
         </div>
       </Card>
 
-      {/* Tableau des Affectations */}
-      <Card className="border border-slate-200 bg-white overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
-              <tr>
-                <th className="py-3 px-4">Équipement</th>
-                <th className="py-3 px-4">Bénéficiaire</th>
-                <th className="py-3 px-4">Type de dotation</th>
-                <th className="py-3 px-4">Période</th>
-                <th className="py-3 px-4">Statut</th>
-                <th className="py-3 px-4">Commentaire</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
-              {isLoading ? (
+      {/* Tableau selon le filtre sélectionné (Affectations ou Équipements disponibles en stock) */}
+      {filterStatut === "disponibles" ? (
+        <Card className="border border-slate-200 bg-white overflow-hidden shadow-xs">
+          <div className="border-b border-slate-100 bg-sky-50/50 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-sky-100 text-sky-700">
+                <PackageCheck className="size-4" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Équipements non affectés (En stock)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Matériels prêts et disponibles pour une nouvelle dotation.
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-800">
+              {filteredEquipementsDispo.length} matériel{filteredEquipementsDispo.length > 1 ? "s" : ""} disponible{filteredEquipementsDispo.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
-                    Chargement des affectations...
-                  </td>
+                  <th className="py-3 px-4">Code</th>
+                  <th className="py-3 px-4">Type d'équipement</th>
+                  <th className="py-3 px-4">Marque & Modèle</th>
+                  <th className="py-3 px-4">Numéro de série</th>
+                  <th className="py-3 px-4">État</th>
+                  <th className="py-3 px-4">Localisation</th>
+                  <th className="py-3 px-4 text-right">Action</th>
                 </tr>
-              ) : filteredAffectations.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
-                    <FileQuestion className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                    Aucune affectation trouvée pour ces critères.
-                  </td>
-                </tr>
-              ) : (
-                filteredAffectations.map((aff) => {
-                  const isActive = !aff.date_fin;
-                  return (
-                    <tr key={aff.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">
-                          {aff.equipement_type}
-                        </div>
-                        <div className="text-xs text-slate-500 font-mono">
-                          {aff.equipement_label}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-900">
-                        {aff.employe_nom ? (
-                          <div>
-                            <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                              <User className="h-3.5 w-3.5 text-emerald-600" />
-                              {aff.employe_nom}
-                            </span>
-                            {aff.service_nom && (
-                              <span className="text-[11px] text-slate-400 block pl-5">
-                                {aff.service_nom}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            <Building2 className="h-3.5 w-3.5 text-blue-600" />
-                            {aff.service_nom}
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                      Chargement des équipements disponibles...
+                    </td>
+                  </tr>
+                ) : filteredEquipementsDispo.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <FileQuestion className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                      Aucun équipement disponible trouvé pour ces critères.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEquipementsDispo.map((eq) => {
+                    const etatInfo = ETATS_EQUIPEMENTS[eq.etat as keyof typeof ETATS_EQUIPEMENTS] || {
+                      label: eq.etat || "En service",
+                      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    };
+                    return (
+                      <tr key={eq.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-mono font-bold text-xs text-emerald-700">
+                          {formatCodeEquipement(eq.code)}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-slate-900">
+                          {eq.type}
+                        </td>
+                        <td className="py-3 px-4 text-slate-700">
+                          {eq.marque || eq.modele ? `${eq.marque || ""} ${eq.modele || ""}`.trim() : "—"}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-xs text-slate-500">
+                          {eq.numero_serie || "—"}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${etatInfo.badgeClass}`}>
+                            {etatInfo.label}
                           </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {aff.employe_nom ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold inline-block">
-                            Personnel
-                          </span>
-                        ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 font-semibold inline-block">
-                            Service (partagé)
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="text-slate-800 font-medium text-xs">
-                          Du {formatDateFr(aff.date_debut)}
-                        </div>
-                        {aff.date_fin && (
-                          <div className="text-xs text-slate-400">
-                            Au {formatDateFr(aff.date_fin)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        {isActive ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-slate-500 bg-slate-100 border border-slate-200 font-medium">
-                            Clôturée
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 text-xs max-w-xs truncate">
-                        {aff.commentaire || "—"}
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        {isActive ? (
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 text-xs">
+                          {eq.localisation || "Magasin IT Touba Gaz"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
                           <Button
-                            variant="outline"
                             size="sm"
-                            onClick={() => handleCloturerAffectation(aff)}
-                            className="h-8 border-slate-200 bg-white text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 shadow-2xs cursor-pointer"
-                            title="Clôturer cette affectation (restituer le matériel au stock)"
+                            onClick={() => {
+                              setSelectedEqId(eq.id);
+                              setIsModalOpen(true);
+                            }}
+                            className="h-8 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs text-xs font-semibold cursor-pointer"
+                            title={`Affecter ${formatCodeEquipement(eq.code)}`}
                           >
-                            <CheckSquare className="h-3.5 w-3.5 mr-1 text-amber-600" />
-                            Clôturer
+                            <Plus className="h-3.5 w-3.5" />
+                            Affecter
                           </Button>
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">Terminée</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <Card className="border border-slate-200 bg-white overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4">Équipement</th>
+                  <th className="py-3 px-4">Bénéficiaire</th>
+                  <th className="py-3 px-4">Type de dotation</th>
+                  <th className="py-3 px-4">Période</th>
+                  <th className="py-3 px-4">Statut</th>
+                  <th className="py-3 px-4">Commentaire</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                      Chargement des affectations...
+                    </td>
+                  </tr>
+                ) : filteredAffectations.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <FileQuestion className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                      Aucune affectation trouvée pour ces critères.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAffectations.map((aff) => {
+                    const isActive = !aff.date_fin;
+                    return (
+                      <tr key={aff.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-900">
+                            {aff.equipement_type}
+                          </div>
+                          <div className="text-xs text-slate-500 font-mono">
+                            {aff.equipement_label}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-900">
+                          {aff.employe_nom ? (
+                            <div>
+                              <span className="flex items-center gap-1.5 font-semibold text-slate-900">
+                                <User className="h-3.5 w-3.5 text-emerald-600" />
+                                {aff.employe_nom}
+                              </span>
+                              {aff.service_nom && (
+                                <span className="text-[11px] text-slate-400 block pl-5">
+                                  {aff.service_nom}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="flex items-center gap-1.5 font-semibold text-slate-900">
+                              <Building2 className="h-3.5 w-3.5 text-blue-600" />
+                              {aff.service_nom}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {aff.employe_nom ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold inline-block">
+                              Personnel
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 font-semibold inline-block">
+                              Service (partagé)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="text-slate-800 font-medium text-xs">
+                            Du {formatDateFr(aff.date_debut)}
+                          </div>
+                          {aff.date_fin && (
+                            <div className="text-xs text-slate-400">
+                              Au {formatDateFr(aff.date_fin)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {isActive ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-slate-500 bg-slate-100 border border-slate-200 font-medium">
+                              Clôturée
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 text-xs max-w-xs truncate">
+                          {aff.commentaire || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          {isActive ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleCloturerAffectation(aff)}
+                              className="h-8 border-slate-200 bg-white text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-50 shadow-2xs cursor-pointer"
+                              title="Clôturer cette affectation (restituer le matériel au stock)"
+                            >
+                              <CheckSquare className="h-3.5 w-3.5 mr-1 text-amber-600" />
+                              Clôturer
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Terminée</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Modal d'affectation */}
       {isModalOpen && (

@@ -307,16 +307,6 @@ export default function TicketsPage() {
         </Button>
       </PageHeader>
 
-      {/* Règle métier rappel */}
-      <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span>
-            <strong>Cycle ITSM Touba Gaz :</strong> La priorité des tickets est calculée automatiquement par criticité de l'équipement et impact de la panne. Les interventions techniques uniques garantissent la traçabilité.
-          </span>
-        </span>
-      </div>
-
       {/* Barre de filtres unifiée */}
       <Card className="border border-slate-200 bg-white p-4 shadow-xs">
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">

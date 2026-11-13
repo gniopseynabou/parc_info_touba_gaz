@@ -18,6 +18,7 @@ export interface PDFRapportData {
     equipementsParEtat: Record<string, number>;
     prioritesCount: Record<string, number>;
     statutsCount: Record<string, number>;
+    ticketsEvolution?: { date: string; count: number }[];
   };
   demandesEtInterventions: Array<{
     numero: number;
@@ -188,7 +189,78 @@ export function generateProfessionalPDF(data: PDFRapportData): void {
   });
 
   const lastTableEnd = (doc as any).lastAutoTable?.finalY || currentY + 30;
-  currentY = lastTableEnd + 8;
+  currentY = lastTableEnd + 6;
+
+  // ── DIAGRAMME : Volume chronologique des demandes d'assistance ──
+  const ticketsEvo = data.graphiques.ticketsEvolution || [];
+
+  if (ticketsEvo.length > 0) {
+    const chartTitle = "Volume chronologique des demandes d'assistance";
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(darkSlate[0], darkSlate[1], darkSlate[2]);
+    doc.text(chartTitle, margin, currentY + 4);
+    currentY += 8;
+
+    const chartWidth = pageWidth - 2 * margin;
+    const chartHeight = 36;
+    const maxCount = Math.max(...ticketsEvo.map((t) => t.count), 1);
+    const barGap = 2;
+    const barW = Math.max((chartWidth - barGap * (ticketsEvo.length - 1)) / ticketsEvo.length, 4);
+    const labelAreaH = 8;
+
+    // Fond du graphique
+    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2]);
+    doc.roundedRect(margin, currentY, chartWidth, chartHeight + labelAreaH + 4, 2, 2, "FD");
+
+    // Lignes de grille horizontales
+    const gridLines = 4;
+    for (let i = 0; i <= gridLines; i++) {
+      const gy = currentY + 2 + (chartHeight / gridLines) * i;
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.15);
+      doc.line(margin + 1, gy, margin + chartWidth - 1, gy);
+      // Étiquette valeur à gauche
+      const gridVal = Math.round(maxCount - (maxCount / gridLines) * i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(String(gridVal), margin + 2, gy - 0.5);
+    }
+
+    // Barres
+    ticketsEvo.forEach((item, idx) => {
+      const x = margin + 1 + idx * (barW + barGap);
+      const heightPct = item.count / maxCount;
+      const barH = Math.max(heightPct * chartHeight, 1.5);
+      const barY = currentY + 2 + (chartHeight - barH);
+
+      // Barre bleue
+      doc.setFillColor(2, 132, 199); // sky-600
+      doc.roundedRect(x, barY, barW, barH, 0.8, 0.8, "F");
+
+      // Valeur au-dessus de la barre
+      if (item.count > 0) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.5);
+        doc.setTextColor(darkSlate[0], darkSlate[1], darkSlate[2]);
+        doc.text(String(item.count), x + barW / 2, barY - 1, { align: "center" });
+      }
+
+      // Date en dessous
+      const dateLabel = item.date.length >= 10 ? item.date.slice(5) : item.date;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5);
+      doc.setTextColor(slateText[0], slateText[1], slateText[2]);
+      doc.text(dateLabel, x + barW / 2, currentY + chartHeight + 6, { align: "center" });
+    });
+
+    currentY += chartHeight + labelAreaH + 8;
+  }
+
+  // Trier les demandes en ordre croissant par numéro
+  data.demandesEtInterventions.sort((a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0));
 
   // 5. TABLEAU DÉTAILLÉ SYNTHÉTIQUE DES DEMANDES & INTERVENTIONS (Vue unifiée)
   doc.setFont("helvetica", "bold");

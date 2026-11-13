@@ -29,8 +29,9 @@ import pool from "@/lib/db";
 import { DashboardStats, Ticket } from "@/types";
 import { RowDataPacket } from "mysql2";
 
+import { DashboardTabsSection, DashboardEquipementItem, RecentTicket } from "@/components/dashboard-tabs-section";
+
 interface DashboardTicketRow extends RowDataPacket {
-  id: string;
   numero: number;
   description: string;
   priorite: Ticket["priorite"];
@@ -45,21 +46,10 @@ interface ServiceEquipementStat extends RowDataPacket {
   total_equipements: number;
 }
 
-type RecentTicket = Pick<
-  Ticket,
-  | "id"
-  | "numero"
-  | "description"
-  | "priorite"
-  | "statut"
-  | "created_at"
-  | "demandeur_nom"
-  | "service_nom"
->;
-
 interface DashboardData {
   stats: DashboardStats;
   recentTickets: RecentTicket[];
+  recentEquipements: DashboardEquipementItem[];
   totalTicketsCount: number;
   equipementsParService: ServiceEquipementStat[];
   totalServicesCount: number;
@@ -101,6 +91,30 @@ async function getDashboardData(): Promise<DashboardData> {
       LEFT JOIN employes emp ON emp.id = t.demandeur_id
       LEFT JOIN services srv ON srv.id = t.service_id
       ORDER BY t.created_at DESC
+      LIMIT 10
+    `);
+
+    // Récupérer les équipements récents pour l'onglet Parc matériel
+    const [equipementRows] = await pool.query<RowDataPacket[]>(`
+      SELECT 
+        e.id, 
+        e.code, 
+        e.type, 
+        e.marque, 
+        e.modele, 
+        e.numero_serie, 
+        e.etat,
+        CASE 
+          WHEN a.employe_id IS NOT NULL THEN CONCAT(emp.prenom, ' ', emp.nom)
+          WHEN a.service_id IS NOT NULL THEN srv.nom
+          ELSE 'En stock'
+        END as affectation
+      FROM equipements e
+      LEFT JOIN affectations a ON a.equipement_id = e.id AND a.date_fin IS NULL
+      LEFT JOIN employes emp ON emp.id = a.employe_id
+      LEFT JOIN services srv ON srv.id = a.service_id
+      WHERE e.archive = 0
+      ORDER BY e.id DESC
       LIMIT 10
     `);
 
@@ -153,9 +167,21 @@ async function getDashboardData(): Promise<DashboardData> {
       service_nom: r.service_nom || undefined,
     }));
 
+    const recentEquipements: DashboardEquipementItem[] = equipementRows.map((r) => ({
+      id: r.id,
+      code: Number(r.code),
+      type: r.type,
+      marque: r.marque || null,
+      modele: r.modele || null,
+      numero_serie: r.numero_serie || null,
+      etat: r.etat,
+      affectation: r.affectation,
+    }));
+
     return {
       stats,
       recentTickets,
+      recentEquipements,
       totalTicketsCount: stats.totalTickets,
       equipementsParService: serviceRows,
       totalServicesCount: serviceRows.length,
@@ -185,6 +211,7 @@ async function getDashboardData(): Promise<DashboardData> {
         totalAffectationsActives: 0,
       },
       recentTickets: [],
+      recentEquipements: [],
       totalTicketsCount: 0,
       equipementsParService: [],
       totalServicesCount: 0,
@@ -221,6 +248,7 @@ async function DashboardContent() {
   const {
     stats,
     recentTickets = [],
+    recentEquipements = [],
     totalTicketsCount,
     equipementsParService = [],
     totalServicesCount,
@@ -363,112 +391,14 @@ async function DashboardContent() {
         </div>
       </section>
 
-      {/* Onglets légers de filtrage rapide (comme 'Stock | Standard | ODM' sur la photo) */}
-      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 w-fit">
-        <Link
-          href="/dashboard"
-          className="px-4 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-2xs"
-        >
-          Vue générale
-        </Link>
-        <Link
-          href="/dashboard/equipements"
-          className="px-4 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          Parc matériel
-        </Link>
-        <Link
-          href="/dashboard/tickets"
-          className="px-4 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          Assistance IT
-        </Link>
-      </div>
-
       {/* 2. SECTION CENTRALE : TABLEAU D'ACTIVITÉ + CARTES STATS (Disposé exactement comme la photo de référence) */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Colonne gauche (7 colonnes) : Tableau des demandes récentes avec bouton 'Voir tout ↗' */}
-        <div className="lg:col-span-7 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-          <div>
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                  Demandes d'assistance récentes
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Derniers signalements d'incidents
-                </p>
-              </div>
-
-              {/* Bouton Voir tout ↗ (exactement comme la photo de référence) */}
-              <Link
-                href="/dashboard/tickets"
-                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 hover:text-emerald-700 transition-colors shadow-2xs"
-              >
-                <span>Voir tout</span>
-                <span className="text-slate-400">↗</span>
-              </Link>
-            </div>
-
-            {/* Tableau lisible épuré */}
-            <div className="mt-4 overflow-x-auto">
-              {visibleTickets.length === 0 ? (
-                <div className="py-12 text-center text-xs text-slate-400 italic">
-                  Aucun ticket enregistré.
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-slate-500 font-semibold">
-                      <th className="pb-3 pr-4">ID</th>
-                      <th className="pb-3 px-4">Demandeur</th>
-                      <th className="pb-3 px-4">Statut</th>
-                      <th className="pb-3 pl-4">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {visibleTickets.map((tck) => {
-                      const status = STATUTS_TICKETS[tck.statut];
-                      return (
-                        <tr key={tck.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 pr-4 whitespace-nowrap">
-                            <span className="font-bold text-slate-900 block font-mono">
-                              #{formatNumeroTicket(tck.numero)}
-                            </span>
-                            <span className="text-[11px] text-slate-400 block">
-                              {formatDateFr(tck.created_at)}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className="font-semibold text-slate-800 block">
-                              {tck.demandeur_nom || "Demandeur"}
-                            </span>
-                            <span className="text-[11px] text-slate-400 block">
-                              {tck.service_nom || "Touba Gaz"}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border ${
-                                status?.badgeClass || "bg-slate-50 text-slate-700 border-slate-200"
-                              }`}
-                            >
-                              {status?.label || tck.statut}
-                            </span>
-                          </td>
-                          <td className="py-3.5 pl-4 max-w-[180px]">
-                            <p className="line-clamp-2 text-slate-600 font-medium leading-relaxed">
-                              {tck.description}
-                            </p>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+        {/* Colonne gauche (7 colonnes) : Zone d'onglets dynamique réactive */}
+        <div className="lg:col-span-7">
+          <DashboardTabsSection
+            recentTickets={recentTickets}
+            equipements={recentEquipements}
+          />
         </div>
 
         {/* Colonne droite : Carte Mon Activité (comme sur la photo de référence) */}

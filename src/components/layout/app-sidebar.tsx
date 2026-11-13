@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -122,17 +123,27 @@ export function AppSidebar({
             className="flex items-center gap-3 overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             title="Touba Gaz IT"
           >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60 shadow-2xs">
-              <Flame className="size-5" />
-            </div>
-            {isExpanded && (
-              <div className="min-w-0">
-                <span className="truncate text-sm font-bold tracking-tight text-slate-900 block">
-                  TOUBA GAZ
-                </span>
-                <span className="truncate text-[11px] font-semibold text-emerald-600 block">
-                  Parc Informatique
-                </span>
+            {isExpanded ? (
+              <div className="flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="Touba Gaz"
+                  width={150}
+                  height={50}
+                  className="h-11 w-auto object-contain"
+                  priority
+                />
+              </div>
+            ) : (
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white overflow-hidden ring-1 ring-slate-200 shadow-2xs p-0.5">
+                <Image
+                  src="/icon.png"
+                  alt="Touba Gaz"
+                  width={44}
+                  height={44}
+                  className="size-10 object-contain rounded-lg"
+                  priority
+                />
               </div>
             )}
           </Link>

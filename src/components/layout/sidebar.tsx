@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -78,26 +79,20 @@ export function Sidebar({ mobileOpen, onNavigate }: SidebarProps) {
       }`}
     >
       {/* En-tête de marque Touba Gaz IT */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#E2E8F0] px-5 bg-white">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#E2E8F0] px-4 bg-white">
         <Link
           href="/dashboard"
           onClick={onNavigate}
           className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/70">
-            <Flame className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-bold tracking-wide text-slate-900">
-                TOUBA GAZ
-              </span>
-              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
-                IT
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500">Gestion du parc</p>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Touba Gaz"
+            width={150}
+            height={50}
+            className="h-11 w-auto object-contain"
+            priority
+          />
         </Link>
         <button
           type="button"

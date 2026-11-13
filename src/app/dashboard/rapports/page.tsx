@@ -62,6 +62,20 @@ interface RapportData {
     prioritesCount: Record<string, number>;
     statutsCount: Record<string, number>;
     interventionsEvolution: { date: string; count: number; duree: number }[];
+    interventionsParSemaine?: Array<{
+      semaineKey: string;
+      semaineLabel: string;
+      annee: number;
+      semaineNumero: number;
+      debutSemaine: string;
+      finSemaine: string;
+      count: number;
+      interventionsAvecDuree: number;
+      dureeMinutesTotale: number;
+      dureeHeuresTotale: number;
+      dureeMoyenneMinutes: number;
+      dureeMoyenneHeures: number;
+    }>;
   };
   interventions: any[];
   tickets: any[];
@@ -276,7 +290,8 @@ export default function RapportsPage() {
           ? services.find((s) => s.id === selectedService)?.nom
           : "Tous services";
 
-      const pdfItems = data.tickets.map((t) => ({
+      const sortedTickets = [...data.tickets].sort((a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0));
+      const pdfItems = sortedTickets.map((t) => ({
         numero: t.numero,
         date: formatDateFr(t.created_at),
         demandeur: t.demandeur_nom || "Non renseigné",
@@ -327,6 +342,24 @@ export default function RapportsPage() {
     }
 
     const title = `Rapport_Activite_Touba_Gaz_${dateDebut || "debut"}_${dateFin || "fin"}`;
+    const sortedTicketsWord = [...data.tickets].sort((a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0));
+
+    // Préparer le diagramme chronologique des tickets pour Word
+    const ticketsEvo = data.graphiques.ticketsEvolution || [];
+    const maxEvoCount = Math.max(...ticketsEvo.map((t) => t.count), 1);
+
+    const chronoBarsHtml = ticketsEvo.length > 0
+      ? ticketsEvo.map((item) => {
+          const heightPct = Math.max(Math.round((item.count / maxEvoCount) * 100), 8);
+          const dateLabel = item.date.length >= 10 ? item.date.slice(5) : item.date;
+          return `<td style="vertical-align:bottom;text-align:center;padding:2px;border:none;">
+            <div style="font-size:8pt;font-weight:bold;color:#1E293B;margin-bottom:2px;">${item.count}</div>
+            <div style="background:#0284C7;width:100%;height:${heightPct}px;border-radius:3px 3px 0 0;min-height:6px;"></div>
+            <div style="font-size:7pt;color:#475569;margin-top:3px;white-space:nowrap;">${dateLabel}</div>
+          </td>`;
+        }).join("")
+      : `<td style="text-align:center;padding:20px;border:none;font-style:italic;color:#94A3B8;">Aucun ticket sur cette période.</td>`;
+
     const htmlContent = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
@@ -358,7 +391,14 @@ export default function RapportsPage() {
           <p><strong>Durée d'intervention cumulée :</strong> ${formatDuree(data.synthese.dureeTotaleMinutes)}</p>
         </div>
 
-        <h2>2. Demandes d'Assistance et Interventions de Maintenance (${data.tickets.length})</h2>
+        <h2>2. Volume chronologique des demandes d'assistance</h2>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;margin-bottom:12px;">
+          <tr style="height:120px;">
+            ${chronoBarsHtml}
+          </tr>
+        </table>
+
+        <h2>3. Demandes d'Assistance et Interventions de Maintenance (${sortedTicketsWord.length})</h2>
         <table>
           <thead>
             <tr>
@@ -373,7 +413,7 @@ export default function RapportsPage() {
             </tr>
           </thead>
           <tbody>
-            ${data.tickets
+            ${sortedTicketsWord
               .map(
                 (t) => `
               <tr>
@@ -822,7 +862,7 @@ export default function RapportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 print:divide-gray-200 text-slate-700">
-                      {data.tickets.map((tck) => {
+                      {[...data.tickets].sort((a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0)).map((tck) => {
                         const status = STATUTS_TICKETS[tck.statut as keyof typeof STATUTS_TICKETS];
                         const priority = PRIORITES_TICKETS[tck.priorite as keyof typeof PRIORITES_TICKETS];
                         const hasIntervention = Boolean(tck.intervention_id || tck.intervention_actions);

@@ -157,7 +157,7 @@ export async function GET(req: Request) {
       paramsTck.push(categorie);
     }
 
-    queryTickets += ` ORDER BY t.created_at DESC`;
+    queryTickets += ` ORDER BY t.numero ASC`;
     const [tickets] = await pool.query<RowDataPacket[]>(queryTickets, paramsTck);
 
     // 3. Répartition des équipements par état (A)
@@ -247,24 +247,134 @@ export async function GET(req: Request) {
       }
     }
 
-    // 8. Évolution temporelle des interventions (F)
+    // 8. Évolution temporelle et analyse par semaine des interventions (F)
     const interventionsEvolutionMap = new Map<string, { count: number; duree: number }>();
+    const interventionsSemainesMap = new Map<
+      string,
+      {
+        semaineKey: string;
+        semaineLabel: string;
+        annee: number;
+        semaineNumero: number;
+        debutSemaine: string;
+        finSemaine: string;
+        count: number;
+        interventionsAvecDuree: number;
+        dureeMinutesTotale: number;
+      }
+    >();
+
     let dureeTotaleMinutes = 0;
+
+    // Helper ISO Week pour grouper fidèlement par semaine civile
+    function getISOWeekData(dateObj: Date) {
+      const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+      const isoYear = d.getUTCFullYear();
+
+      // Calcul du lundi (début) et dimanche (fin) de cette semaine ISO
+      const simple = new Date(Date.UTC(isoYear, 0, 1 + (weekNo - 1) * 7));
+      const dow = simple.getUTCDay();
+      const isoWeekStart = new Date(simple);
+      if (dow <= 4) {
+        isoWeekStart.setUTCDate(simple.getUTCDate() - simple.getUTCDay() + 1);
+      } else {
+        isoWeekStart.setUTCDate(simple.getUTCDate() + 8 - simple.getUTCDay());
+      }
+      const isoWeekEnd = new Date(isoWeekStart);
+      isoWeekEnd.setUTCDate(isoWeekStart.getUTCDate() + 6);
+
+      return {
+        isoYear,
+        weekNo,
+        semaineKey: `${isoYear}-W${String(weekNo).padStart(2, "0")}`,
+        semaineLabel: `S${weekNo}`,
+        debutSemaine: isoWeekStart.toISOString().split("T")[0],
+        finSemaine: isoWeekEnd.toISOString().split("T")[0],
+      };
+    }
+
     for (const i of interventions) {
       if (i.debut) {
-        const d = new Date(i.debut).toISOString().split("T")[0];
+        const dObj = new Date(i.debut);
+        const d = dObj.toISOString().split("T")[0];
         const prev = interventionsEvolutionMap.get(d) || { count: 0, duree: 0 };
-        const dur = Number(i.duree_minutes || 0);
+        
+        // Règle 5 : durée valide uniquement si debut et fin valides et fin >= debut
+        const hasValidDuration =
+          i.debut !== null &&
+          i.fin !== null &&
+          i.duree_minutes !== null &&
+          Number(i.duree_minutes) >= 0;
+
+        const dur = hasValidDuration ? Number(i.duree_minutes) : 0;
+
         interventionsEvolutionMap.set(d, {
           count: prev.count + 1,
           duree: prev.duree + dur,
         });
-        dureeTotaleMinutes += dur;
+
+        if (hasValidDuration) {
+          dureeTotaleMinutes += dur;
+        }
+
+        // Groupement par semaine
+        const iso = getISOWeekData(dObj);
+        const prevSemaine = interventionsSemainesMap.get(iso.semaineKey) || {
+          semaineKey: iso.semaineKey,
+          semaineLabel: iso.semaineLabel,
+          annee: iso.isoYear,
+          semaineNumero: iso.weekNo,
+          debutSemaine: iso.debutSemaine,
+          finSemaine: iso.finSemaine,
+          count: 0,
+          interventionsAvecDuree: 0,
+          dureeMinutesTotale: 0,
+        };
+
+        prevSemaine.count += 1;
+        if (hasValidDuration) {
+          prevSemaine.interventionsAvecDuree += 1;
+          prevSemaine.dureeMinutesTotale += dur;
+        }
+
+        interventionsSemainesMap.set(iso.semaineKey, prevSemaine);
       }
     }
+
     const interventionsEvolution = Array.from(interventionsEvolutionMap.entries())
       .map(([date, val]) => ({ date, count: val.count, duree: val.duree }))
       .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Transformation en tableau d'analyse par semaine ordonné chronologiquement
+    const interventionsParSemaine = Array.from(interventionsSemainesMap.values())
+      .sort((a, b) => a.semaineKey.localeCompare(b.semaineKey))
+      .map((s) => {
+        const dureeHeuresTotale = Math.round((s.dureeMinutesTotale / 60) * 10) / 10;
+        const dureeMoyenneMinutes =
+          s.interventionsAvecDuree > 0
+            ? Math.round(s.dureeMinutesTotale / s.interventionsAvecDuree)
+            : 0;
+        const dureeMoyenneHeures = Math.round((dureeMoyenneMinutes / 60) * 10) / 10;
+
+        return {
+          semaineKey: s.semaineKey,
+          semaineLabel: s.semaineLabel,
+          annee: s.annee,
+          semaineNumero: s.semaineNumero,
+          debutSemaine: s.debutSemaine,
+          finSemaine: s.finSemaine,
+          count: s.count,
+          interventionsAvecDuree: s.interventionsAvecDuree,
+          dureeMinutesTotale: s.dureeMinutesTotale,
+          dureeHeuresTotale,
+          dureeMoyenneMinutes,
+          dureeMoyenneHeures,
+        };
+      });
 
     const totalIncidents = tickets.length;
     const totalInterventions = interventions.length;
@@ -301,6 +411,7 @@ export async function GET(req: Request) {
           prioritesCount,
           statutsCount,
           interventionsEvolution,
+          interventionsParSemaine,
         },
         interventions,
         tickets,
